@@ -21,7 +21,8 @@ class Driver:
         self.x = x
         self.y = y
         self.driver_features = driver_features
-        self.current_orders = []  # we keep a list of unfinished orders
+        self.current_orders = []  # we keep a 2D list of unfinished orders (order indices, travel times from each driver's location)
+        self.current_orders.append([]) 
         self.is_idle = True
         self.trajectory = []  # we keep a record of VRP result trajectory
 
@@ -29,6 +30,7 @@ class Driver:
         self.driver_search_radius = driver_radius
 
     def vrp_routing(self, orders):
+   #def vrp_routing(self, order): ?
         # TODO: solve the vrp from current location to complete all Orders in self.current_orders
         # there could be a warm start vrp algorithm
         # (i.e. we add only one order to current trajectory and we keep most of the trajectory)
@@ -37,7 +39,9 @@ class Driver:
     def try_new_order(self, order):
         # TODO: add this order to the current_order list to a temporary order list and do vrp routing
         # this function only calculate the vrp results, it is not the actual movement
-        return 0
+        travel_time = vrp_routing(order)
+        self.current_orders.append(order.index, travel_time)  
+        return 0 
 
     def take_order(self, order):
         # TODO: update trajectory
