@@ -51,7 +51,7 @@ class Driver:
 
 
 class City:
-    def __init__(self, size, n_drivers, n_restaurants, seed, even_demand_distr=True, demand_distr=None):
+    def __init__(self, size, n_drivers, n_restaurants, seed=1, even_demand_distr=True, demand_distr=None):
         self.seed = seed
         np.random.seed(seed)
         # initialize the city map
