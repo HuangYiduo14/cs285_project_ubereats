@@ -14,5 +14,3 @@ class BaseAgent(object):
 
     def save(self, path):
         raise NotImplementedError
-
-print('hello')
