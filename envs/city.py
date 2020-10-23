@@ -17,10 +17,12 @@ class Order:
 
 
 class Driver:
-    def __init__(self, x, y, driver_features, order_radius=1, driver_radius=2):
+    def __init__(self, x, y, driver_features, order_radius=1, driver_radius=2, max_capacity = 4):
         self.x = x
         self.y = y
         self.driver_features = driver_features
+        self.max_capacity = max_capacity
+        self.capacity = max_capacity
         self.current_orders = []  # we keep a list of unfinished orders
         self.is_idle = True
         self.trajectory = []  # we keep a record of VRP result trajectory
