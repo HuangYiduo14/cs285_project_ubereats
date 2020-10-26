@@ -214,7 +214,7 @@ class City:
         expected_reward = 0
         lost_order_penalty = 0
         for order in orders:
-            if order.pickup_ddl < t:
+            if order.pickup_ddl < t and (not order.is_pickup):
                 lost_order_penalty += self.lost_order_penalty(order.fee)
                 order_deleted_index.append(order.index)
         targets = dict()
@@ -229,9 +229,6 @@ class City:
         order_sequence = [-1]
         actual_reward = 0
 
-        if 15 in driver.current_orders.keys():
-            print(targets)
-            pdb.set_trace()
 
         while len(targets) > 0:
             min_trip_cost = self.Inf
@@ -256,10 +253,6 @@ class City:
                 # calculate fee and late penalty
                 late_time = (t - orders[next_order].desired_delivery_time) / orders[next_order].desired_travel_time
                 loc = targets.pop(next_order)
-                if (15 in driver.current_orders.keys()):
-                    print(targets)
-                    print(loc, '<<<<' * 100)
-                    print(orders[next_order].index)
 
                 cap_available += 1
                 expected_reward = expected_reward + orders[next_order].fee - self.late_penalty(late_time,
@@ -275,10 +268,6 @@ class City:
                 cap_available -= 1
                 if t == self.time:
                     order_picked_index.append(orders[next_order].index)
-                if (15 in driver.current_orders.keys()):
-                    print(targets)
-                    print(targets[next_order], 'pickup****' * 100)
-                    print(orders[next_order].index)
 
             # overdue orders that are not picked up are lost
             for key, _ in targets.items():
@@ -286,8 +275,7 @@ class City:
                     expected_reward -= self.lost_order_penalty(orders[key].fee)
             targets = {key: loc for key, loc in targets.items() if
                        ((orders[key].pickup_ddl >= t) or orders[key].is_pickup)}
-        if 15 in driver.current_orders.keys():
-            pdb.set_trace()
+
         for _ in range((3 * (driver.max_orders * 2 + 1) - len(new_trajectory)) // 3):
             new_trajectory += [x, y, t]
             order_sequence.append(-1)
