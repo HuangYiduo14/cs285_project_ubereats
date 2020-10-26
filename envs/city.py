@@ -27,9 +27,11 @@ class Driver:
         self.x = x
         self.y = y
         self.driver_features = driver_features
+
         self.max_capacity = max_capacity
         self.capacity = max_capacity
         self.current_orders = dict()  # we keep a list of unfinished orders
+
         self.is_idle = True
         self.trajectory = []  # we keep a record of VRP result trajectory
         self.max_orders = max_orders
@@ -44,6 +46,7 @@ class Driver:
 
         self.order_search_radius = order_radius
         self.driver_search_radius = driver_radius
+
 
     def move_one_step(self):
         # move the vehicle in one time step according to its current_orders, vrp trajectory and current location
