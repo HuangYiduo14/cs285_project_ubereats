@@ -1,4 +1,5 @@
 import numpy as np
+import pdb
 
 
 class Restaurant:
@@ -9,7 +10,7 @@ class Restaurant:
 
 
 class Order:
-    def __init__(self, o, d, desired_delivery_time, pickup_ddl, fee, index):
+    def __init__(self, o, d, desired_delivery_time, pickup_ddl, fee, index, is_repostion=False):
         self.ori = o
         self.dest = d
         self.desired_delivery_time = desired_delivery_time
@@ -17,6 +18,7 @@ class Order:
         self.fee = fee
         self.pickup_ddl = pickup_ddl
         self.is_pickup = False
+        self.is_reposition = is_repostion
         self.index = index
 
 
@@ -71,7 +73,7 @@ class Driver:
 
         # update new expected time
         # if overdue orders has not been picked up, delete them from buffer
-        return 0
+        return -1
 
 
 class City:
@@ -92,23 +94,32 @@ class City:
         # initialize drivers, restaurants and demand(home)
         for _ in range(n_drivers):
             type = np.random.choice([0, 1, 2], p=[0.1, 0.8, 0.1])
-            home_x = np.random.rand() * self.width
-            home_y = np.random.rand() * self.height
+            home_x = round(np.random.rand() * self.width)
+            home_y = round(np.random.rand() * self.height)
             driver_features = {'type': type, 'home_address': [home_x, home_y], 'is_last_order': False,
                                'speed': self.speed_profile[type]}
             self.drivers.append(Driver(home_x, home_y, driver_features))
 
         self.restaurants = [
-            Restaurant(np.random.rand() * self.width / 2., np.random.rand() * self.height / 2., np.random.rand() / 2.)
+            Restaurant(round(np.random.rand() * self.width / 2.), round(np.random.rand() * self.height / 2.),
+                       np.random.rand() / 2. + 0.5)
             for _ in
             range(n_restaurants)]  # we assume restaurant are in the center of the city
         if even_demand_distr:
-            self.demand_distr = {(x + 0.5, y + 0.5): 1 / self.width / self.height for x in range(self.width) for y in
+            self.demand_distr = {(x, y): 1 / self.width / self.height for x in range(self.width) for y in
                                  range(self.height)}
             # demand_distr is the pdf of demand (a dictionary)
 
         # initialize order buffer
         self.order_buffer = []
+        self.all_orders = []
+
+        # for test only
+        self.drivers[0].x = 0
+        self.drivers[0].y = 0
+        self.order_buffer = [Order((0, 0), (1, 1), 20, 10, 100, 0)]
+        self.all_orders = [Order((0, 0), (1, 1), 20, 10, 100, 0)]
+        self.total_orders = 1
 
     def travel_time(self, x1, y1, x2, y2, driver_features):
         speed = self.speed_profile[driver_features['type']]
@@ -148,18 +159,21 @@ class City:
             if np.random.rand() < self.restaurants[i].attractiveness:
                 active_restaurants.append(i)
         for i in active_restaurants:
-            home = np.random.choice(list(self.demand_distr.keys()), p=list(self.demand_distr.values()))
+            dict_keys = list(self.demand_distr.keys())
+            home_ind = np.random.choice(list(range(len(dict_keys))), p=list(self.demand_distr.values()))
+            home = dict_keys[home_ind]
             restaurant_x = self.restaurants[i].x
             restaurant_y = self.restaurants[i].y
             expected_delivery_time = self.expected_delivery_time(restaurant_x, restaurant_y, home[0], home[1])
-
             fee = self.fee(expected_delivery_time)
 
-            new_order = Order((restaurant_x, restaurant_y), (home[0], home[1]), self.time + expected_delivery_time,
-                              self.time + expected_delivery_time / 2, fee, self.total_orders)
-            self.total_orders += 1
-            new_orders.append(new_order)
+            if expected_delivery_time > 1:
+                new_order = Order((restaurant_x, restaurant_y), (home[0], home[1]), self.time + expected_delivery_time,
+                                  self.time + expected_delivery_time / 2, fee, self.total_orders)
+                self.total_orders += 1
+                new_orders.append(new_order)
         self.order_buffer = self.order_buffer + new_orders
+        self.all_orders = self.all_orders + new_orders
         return new_orders
 
     def observe(self, driver: Driver):
@@ -175,16 +189,16 @@ class City:
         # for each vehicle, take an action
         rewards = []
         observations = []
+        city_observation = {'drivers': self.drivers, 'order_buffer': self.order_buffer}
         for i in range(self.n_drivers):
-            this_reward, fee, travel_time, travel_cost, late_penalty, lost_order_penalty = self.driver_take_action(
-                self.drivers[i], actions[i])
-
+            this_reward = self.driver_take_action(self.drivers[i], actions[i])
             rewards.append(this_reward)
             observations.append(self.observe(self.drivers[i]))
         # if an other has not been picked up, delete it from buffer
-        self.order_buffer = [order for order in self.order_buffer if order.pickup_ddl <= self.time]
+        self.order_buffer = [order for order in self.order_buffer if order.pickup_ddl > self.time]
         self.time += 1
-        return rewards, observations
+
+        return rewards, observations, city_observation
 
     def vrp_orders(self, driver, orders):
         num_orders = len(orders)
@@ -195,11 +209,14 @@ class City:
         y = driver.y
         t = self.time
         # update drivers orders and penalize lost orders
+        order_deleted_index = []
+        order_picked_index = []
+        expected_reward = 0
         lost_order_penalty = 0
         for order in orders:
             if order.pickup_ddl < t:
                 lost_order_penalty += self.lost_order_penalty(order.fee)
-                driver.current_orders.pop(order.index)
+                order_deleted_index.append(order.index)
         targets = dict()
         for key, order in enumerate(orders):
             if order.is_pickup:
@@ -211,6 +228,11 @@ class City:
         new_trajectory = [x, y, t]
         order_sequence = [-1]
         actual_reward = 0
+
+        if 15 in driver.current_orders.keys():
+            print(targets)
+            pdb.set_trace()
+
         while len(targets) > 0:
             min_trip_cost = self.Inf
             next_order = -1
@@ -224,6 +246,8 @@ class City:
             t += self.travel_time(x, y, targets[next_order][0], targets[next_order][1], driver.driver_features)
             x = targets[next_order][0]
             y = targets[next_order][1]
+            expected_reward -= self.travel_cost(x, y, targets[next_order][0], targets[next_order][1],
+                                                driver.driver_features)
             if t != self.time:
                 new_trajectory += [x, y, t]
                 order_sequence.append(orders[next_order].index)
@@ -231,39 +255,77 @@ class City:
                 # if is already picked up
                 # calculate fee and late penalty
                 late_time = (t - orders[next_order].desired_delivery_time) / orders[next_order].desired_travel_time
-                targets.pop(next_order)
+                loc = targets.pop(next_order)
+                if (15 in driver.current_orders.keys()):
+                    print(targets)
+                    print(loc, '<<<<' * 100)
+                    print(orders[next_order].index)
+
                 cap_available += 1
+                expected_reward = expected_reward + orders[next_order].fee - self.late_penalty(late_time,
+                                                                                               orders[next_order].fee)
                 if t == self.time:
-                    driver.current_orders.pop(orders[next_order].index)
-                    actual_reward = actual_reward + orders[next_order].fee  - self.late_penalty(late_time, fee)
+                    order_deleted_index.append(orders[next_order].index)
+                    actual_reward = actual_reward + orders[next_order].fee - self.late_penalty(late_time,
+                                                                                               orders[next_order].fee)
+
             else:
                 is_picked[next_order] = True
                 targets[next_order] = orders[next_order].dest
                 cap_available -= 1
                 if t == self.time:
-                    driver.current_orders[orders[next_order].index].is_pickup = True
+                    order_picked_index.append(orders[next_order].index)
+                if (15 in driver.current_orders.keys()):
+                    print(targets)
+                    print(targets[next_order], 'pickup****' * 100)
+                    print(orders[next_order].index)
+
             # overdue orders that are not picked up are lost
-            targets = {key: loc for key, loc in targets.items() if orders[key].pickup_ddl >= t}
-
-
-        for _ in range((3 * (driver.max_orders + 1) - len(new_trajectory)) // 3):
+            for key, _ in targets.items():
+                if orders[key].pickup_ddl < t:
+                    expected_reward -= self.lost_order_penalty(orders[key].fee)
+            targets = {key: loc for key, loc in targets.items() if
+                       ((orders[key].pickup_ddl >= t) or orders[key].is_pickup)}
+        if 15 in driver.current_orders.keys():
+            pdb.set_trace()
+        for _ in range((3 * (driver.max_orders * 2 + 1) - len(new_trajectory)) // 3):
             new_trajectory += [x, y, t]
             order_sequence.append(-1)
-
-        return new_trajectory, order_sequence, actual_reward
+        return new_trajectory, order_sequence, actual_reward, expected_reward, order_picked_index, order_deleted_index
 
     def driver_take_action(self, driver: Driver, action: Order):
-        if action.ori is not None:
-            new_order_list = list(driver.current_orders.values()) + [action]
-            new_trajectory, order_sequence, actual_reward = self.vrp_orders(driver, new_order_list)
-            # driver.current_orders = new_order_list
+        if (action is None) or (not action.is_reposition):
+            if action is not None:
+                driver.current_orders[action.index] = action
+                self.order_buffer = [order for order in self.order_buffer if action.index != order.index]
+            new_order_list = list(driver.current_orders.values())
+            new_trajectory, order_sequence, actual_reward, _, order_picked_index, order_deleted_index = self.vrp_orders(
+                driver, new_order_list)
+            for order_ind in order_picked_index:
+                driver.current_orders[order_ind].is_pickup = True
+                print('picked order', order_ind)
+                driver.capacity -= 1
+                assert driver.capacity >= 0
+            for order_ind in order_deleted_index:
+                if driver.current_orders[order_ind].is_pickup:
+                    print('drop order', order_ind)
+                    driver.current_orders.pop(order_ind)
+                    driver.capacity += 1
+                    assert driver.capacity <= driver.max_capacity
+                else:
+                    print('pickup overdue', order_ind)
+                    driver.current_orders.pop(order_ind)
             driver.trajectory = new_trajectory
             driver.order_sequence = order_sequence
-        else:
-            driver.current_orders = []
-            travel_time = self.travel_time(driver.x, driver.y, action.dest[0], action.dest[1], driver.driver_features)
-            travel_cost = self.travel_cost(driver.x, driver.y, action.dest[0], action.dest[1], driver.driver_features)
-            driver.trajectory = [driver.x, driver.y, self.time, action.dest[0], action.dest[1], self.time + travel_time]
-        reward = driver.move_one_step()
 
+
+        else:
+            driver.current_orders = dict()
+            travel_time = self.travel_time(driver.x, driver.y, action.dest[0], action.dest[1], driver.driver_features)
+            driver.trajectory = [driver.x, driver.y, self.time, action.dest[0], action.dest[1], self.time + travel_time]
+            for _ in range((3 * (driver.max_orders + 1) - 6) // 3):
+                driver.trajectory += [action.dest[0], action.dest[1], self.time + travel_time]
+            actual_reward = 0
+
+        reward = actual_reward + driver.move_one_step()
         return reward
