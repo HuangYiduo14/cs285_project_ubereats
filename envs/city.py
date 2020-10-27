@@ -52,11 +52,11 @@ class Driver:
         # move the vehicle in one time step according to its current_orders, vrp trajectory and current location
         next_x = self.trajectory[3]
         next_y = self.trajectory[4]
-        expected_next_t = self.trajectory[5]
         move_success = np.random.rand() < self.driver_features['speed']
         if move_success:
             dx = next_x - self.x
             dy = next_y - self.y
+            assert abs(dx)+abs(dy) > 0
             move_along_y = np.random.rand() > 0.5
             if move_along_y:
                 dxy = (0, 1 * (dy > 0) - 1 * (dy < 0))
@@ -117,7 +117,7 @@ class City:
         self.order_buffer = []
         self.all_orders = []
 
-        # for test only
+        # for test only, we add one order at 0,0 and one car at 0,0 to see if the order can be picked immediately
         self.drivers[0].x = 0
         self.drivers[0].y = 0
         self.order_buffer = [Order((0, 0), (1, 1), 20, 10, 100, 0)]
@@ -204,6 +204,29 @@ class City:
         return rewards, observations, city_observation
 
     def vrp_orders(self, driver, orders):
+        """
+        Do vrp for driver from the current location to find a path to satisfy all orders.
+        If some order can be picked or deleted at this time, i.e. the driver is at its pickup/drop point, we calculate
+        the corresponding reward and called this actual_reward.
+        For other orders that will be picked along this path, we calculate the expected reward.
+        Only the actual_reward is deterministic because the travel time is stochastic for each movement.
+
+        :param driver: Driver, we call (driver.x, driver.y) the current location
+        :param orders: list of Order
+        :return:
+        new_trajectory: trajectory plan [current x, current y, current time, next x, next y, expected time,....]
+        Notice that if current x and y is a pickup/drop point, we will not include this point in the trajectory,
+        instead, we add the order index into list order_picked_index or order_deleted_index
+
+        order_sequence: orders to pickup/drop on the trajectory, -1 means no pickup/drop. [-1, order 1, order 2, order 1,...]
+        each element in this list corresponds to 3 elements in trajectory [x,y,t]
+
+        actual_reward: if current x and y is a drop point or some unpicked orders are lost, reward will be incurred
+
+        expected_reward: total reward gained from the planned trajectory
+
+        order_picked_index, order_deleted_index: orders that are picked up/ lost at the current loctaion
+        """
         num_orders = len(orders)
         is_picked = [order.is_pickup for order in orders]
         cap_available = driver.capacity
@@ -211,7 +234,7 @@ class City:
         x = driver.x
         y = driver.y
         t = self.time
-        # update drivers orders and penalize lost orders
+        # update drivers orders and penalize lost orders at this time
         order_deleted_index = []
         order_picked_index = []
         expected_reward = 0
@@ -220,19 +243,18 @@ class City:
             if order.pickup_ddl < t and (not order.is_pickup):
                 lost_order_penalty += self.lost_order_penalty(order.fee)
                 order_deleted_index.append(order.index)
-        targets = dict()
+        targets = dict() # targets is the location of all possible next points
         for key, order in enumerate(orders):
             if order.is_pickup:
                 targets[key] = order.dest
             else:
                 targets[key] = order.ori
-        targets = {key: loc for key, loc in targets.items() if orders[key].pickup_ddl >= t}
-
+        targets = {key: loc for key, loc in targets.items() if (orders[key].pickup_ddl >= t or orders[key].is_pickup)}
         new_trajectory = [x, y, t]
         order_sequence = [-1]
-        actual_reward = 0
+        actual_reward = -lost_order_penalty
 
-
+        # greedily find next location until the targets dictionary is empty
         while len(targets) > 0:
             min_trip_cost = self.Inf
             next_order = -1
@@ -249,18 +271,21 @@ class City:
             expected_reward -= self.travel_cost(x, y, targets[next_order][0], targets[next_order][1],
                                                 driver.driver_features)
             if t != self.time:
+                # if the next point is the same as the current point, we will not include it in the trajectory,
+                # instead, we will pickup/drop the order and calculate the actual reward
                 new_trajectory += [x, y, t]
                 order_sequence.append(orders[next_order].index)
             if is_picked[next_order]:
                 # if is already picked up
                 # calculate fee and late penalty
                 late_time = (t - orders[next_order].desired_delivery_time) / orders[next_order].desired_travel_time
-                loc = targets.pop(next_order)
-
+                loc = targets.pop(next_order) # delete this order from targets if dropped
                 cap_available += 1
                 expected_reward = expected_reward + orders[next_order].fee - self.late_penalty(late_time,
                                                                                                orders[next_order].fee)
                 if t == self.time:
+                    # if this order has the same location as driver.x , driver.y and can be dropped,
+                    # then drop it and calculate actual reward and update order_deleted_index
                     order_deleted_index.append(orders[next_order].index)
                     actual_reward = actual_reward + orders[next_order].fee - self.late_penalty(late_time,
                                                                                                orders[next_order].fee)
@@ -270,28 +295,44 @@ class City:
                 targets[next_order] = orders[next_order].dest
                 cap_available -= 1
                 if t == self.time:
+                    # if this order has the same location as driver.x , driver.y and can be dropped,
+                    # then drop it and calculate actual reward and update order_picked_index
                     order_picked_index.append(orders[next_order].index)
 
-            # overdue orders that are not picked up are lost
+            # overdue orders that are not picked up are expected to be lost
             for key, _ in targets.items():
-                if orders[key].pickup_ddl < t:
+                if orders[key].pickup_ddl < t and (not orders[key].is_pickup):
                     expected_reward -= self.lost_order_penalty(orders[key].fee)
             targets = {key: loc for key, loc in targets.items() if
                        ((orders[key].pickup_ddl >= t) or orders[key].is_pickup)}
-
+        # the format of trajectory is [x0,y0,t0,x1,y1,t1,....,xm,ym,tm], if we only have k-1 orders, k<m,
+        # then we fill the trajectory with the last order completed like
+        # [x0,y0,t0,...,xk,yk,tk,xk,yk,tk,....,xk,yk,tk] so that the length of the trajectory is fixed
         for _ in range((3 * (driver.max_orders * 2 + 1) - len(new_trajectory)) // 3):
             new_trajectory += [x, y, t]
             order_sequence.append(-1)
         return new_trajectory, order_sequence, actual_reward, expected_reward, order_picked_index, order_deleted_index
 
     def driver_take_action(self, driver: Driver, action: Order):
-        if (action is None) or (not action.is_reposition):
-            if action is not None:
+        """
+        driver take an action, calculate reward and update current_orders list and trajectory,
+        then move the driver one step according to its planned trajectory
+        :param driver: Driver
+        :param action: Order to take for this driver
+        :return:
+        reward: actual reward from this step
+        """
+        if (action is None) or (not action.is_reposition): # if this is not a reposition order
+            if action is not None: # if this order is not None (None means stay on the current trajectory)
                 driver.current_orders[action.index] = action
+                # update the order buffer since this order is taken
+                # TODO: use a dict {order.index: order} to represent the order_buffer so that deleting can be done in O(1)
                 self.order_buffer = [order for order in self.order_buffer if action.index != order.index]
             new_order_list = list(driver.current_orders.values())
+            # calculate the vrp trajectory for one driver
             new_trajectory, order_sequence, actual_reward, _, order_picked_index, order_deleted_index = self.vrp_orders(
                 driver, new_order_list)
+            # pickup/drop/delete orders
             for order_ind in order_picked_index:
                 driver.current_orders[order_ind].is_pickup = True
                 print('picked order', order_ind)
@@ -308,15 +349,16 @@ class City:
                     driver.current_orders.pop(order_ind)
             driver.trajectory = new_trajectory
             driver.order_sequence = order_sequence
-
-
-        else:
+        else: # if this is a repostion order (only happens when there is no current orders)
+            assert len(driver.current_orders) == 0
             driver.current_orders = dict()
+            # update trajectory according to the reposition order, new trajecory is
+            # [current x, current y, current time, reposition x, reposition y, estimated arrival time, reposition x, reposition y, estimated arrival time,...]
             travel_time = self.travel_time(driver.x, driver.y, action.dest[0], action.dest[1], driver.driver_features)
             driver.trajectory = [driver.x, driver.y, self.time, action.dest[0], action.dest[1], self.time + travel_time]
             for _ in range((3 * (driver.max_orders + 1) - 6) // 3):
                 driver.trajectory += [action.dest[0], action.dest[1], self.time + travel_time]
             actual_reward = 0
-
+        # move one step
         reward = actual_reward + driver.move_one_step()
         return reward
