@@ -27,9 +27,11 @@ class Driver:
         self.x = x
         self.y = y
         self.driver_features = driver_features
+
         self.max_capacity = max_capacity
         self.capacity = max_capacity
         self.current_orders = dict()  # we keep a list of unfinished orders
+
         self.is_idle = True
         self.trajectory = []  # we keep a record of VRP result trajectory
         self.max_orders = max_orders
@@ -45,6 +47,7 @@ class Driver:
         self.order_search_radius = order_radius
         self.driver_search_radius = driver_radius
 
+
     def move_one_step(self):
         # move the vehicle in one time step according to its current_orders, vrp trajectory and current location
         next_x = self.trajectory[3]
@@ -53,7 +56,7 @@ class Driver:
         if move_success:
             dx = next_x - self.x
             dy = next_y - self.y
-            assert abs(dx)+abs(dy) > 0
+            #assert abs(dx)+abs(dy) > 0
             move_along_y = np.random.rand() > 0.5
             if move_along_y:
                 dxy = (0, 1 * (dy > 0) - 1 * (dy < 0))
@@ -189,16 +192,22 @@ class City:
         # for each vehicle, take an action
         rewards = []
         observations = []
-        city_observation = {'drivers': self.drivers, 'order_buffer': self.order_buffer}
+        drop_order = []
+        pick_order = []
+        #city_observation = {'drivers': self.drivers, 'order_buffer': self.order_buffer}
         for i in range(self.n_drivers):
-            this_reward = self.driver_take_action(self.drivers[i], actions[i])
+            this_reward, order_deleted_index, order_picked_index = self.driver_take_action(self.drivers[i], actions[i])
             rewards.append(this_reward)
             observations.append(self.observe(self.drivers[i]))
+            drop_order.append(order_deleted_index)
+            pick_order.append(order_picked_index)
+
+
         # if an other has not been picked up, delete it from buffer
         self.order_buffer = [order for order in self.order_buffer if order.pickup_ddl > self.time]
         self.time += 1
 
-        return rewards, observations, city_observation
+        return rewards, observations, drop_order, pick_order
 
     def vrp_orders(self, driver, orders):
         """
@@ -319,6 +328,8 @@ class City:
         :return:
         reward: actual reward from this step
         """
+        order_droped_index = []
+        order_picked_index = []
         if (action is None) or (not action.is_reposition): # if this is not a reposition order
             if action is not None: # if this order is not None (None means stay on the current trajectory)
                 driver.current_orders[action.index] = action
@@ -335,12 +346,14 @@ class City:
                 print('picked order', order_ind)
                 driver.capacity -= 1
                 assert driver.capacity >= 0
+            order_droped_index = []
             for order_ind in order_deleted_index:
                 if driver.current_orders[order_ind].is_pickup:
                     print('drop order', order_ind)
                     driver.current_orders.pop(order_ind)
                     driver.capacity += 1
                     assert driver.capacity <= driver.max_capacity
+                    order_droped_index.append(order_ind)
                 else:
                     print('pickup overdue', order_ind)
                     driver.current_orders.pop(order_ind)
@@ -358,4 +371,4 @@ class City:
             actual_reward = 0
         # move one step
         reward = actual_reward + driver.move_one_step()
-        return reward
+        return reward, order_droped_index, order_picked_index
