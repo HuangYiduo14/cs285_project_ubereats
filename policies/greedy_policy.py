@@ -26,7 +26,7 @@ class CentralGreedyPolicy:
                                                                               order])
                     if expected_reward >= baseline_reward: # only non-negative reward gains are considered
                         self.matching_graph.add_edge('D{0}'.format(driver_ind), 'O{0}'.format(order_key),
-                                                     weight=expected_reward - baseline_reward)
+                                                     weight = expected_reward - baseline_reward)
         return self.matching_graph
 
     def bipartite_matching(self):
