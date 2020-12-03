@@ -124,7 +124,7 @@ class Driver:
         c_tn = 0
         delta_tn = 0
         if zeta == 1:
-            print('DISPATCH: driver {0} goes to {1}{2} from {3}{4}'.format(self.id, x0, y0, self.x,self.y))
+            print('DISPATCH: driver {0} goes to {1},{2} from {3},{4}'.format(self.id, x0, y0, self.x,self.y))
             # case 1: we know which order to pick
             order_locations = [order.dest for order in self.order_onboard] # noting here we only consider orders on board
             if x0!=x1 and y0!=y1:
@@ -178,6 +178,11 @@ class Driver:
         self.x += dxy[0]
         self.y += dxy[1]
         self.time += 1
+        print('driver {0} moved to {1},{2}'.format(self.id,self.x,self.y))
+        print('new traj',self.trajectory)
+        print('new traj_time',self.traj_time)
+        print('new order sequence', self.order_drop_sequence)
+        print('orders on board',[order.index for order in self.order_onboard])
         while True:
             if abs(self.x-self.trajectory[0][0])<EPS and abs(self.y-self.trajectory[0][1])<EPS:
                 self.trajectory = self.trajectory[1:]
