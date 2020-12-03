@@ -1,7 +1,7 @@
 import numpy as np
 from envs.city import City, Order
 import networkx as nx
-
+import copy
 
 class CentralGreedyPolicy:
     def __init__(self, city):
@@ -16,14 +16,17 @@ class CentralGreedyPolicy:
     def estimate_rewards(self):
         drivers = self.city.drivers
         orders = self.city.order_buffer
-        for driver_ind, driver in enumerate(drivers):
+        for driver_ind, driver1 in enumerate(drivers):
+            driver = copy.deepcopy(driver1)
             def dist_func(x,y):
                 return self.city.travel_time(x,y, driver.driver_features)
-            baseline_reward = driver.take_action([0, 0, 0, 0, 0, 0], dist_func)
+
+            baseline_reward,_ = driver.take_action([0, 0, 0, 0, 0, 0], dist_func)
             for order_key, order in enumerate(orders):
                 # if we can add this order to this driver, then try
                 if driver.capacity>0:
-                    expected_reward = driver.take_action([1, order.ori[0], order.ori[1], order.dest[0], order.dest[1], order.fee], dist_func)
+                    expected_reward, _ = driver.take_action([1, order.ori[0], order.ori[1], order.dest[0], order.dest[1], order.fee], dist_func)
+                    driver.order_to_pick = order
                     if expected_reward >= baseline_reward: # only non-negative reward gains are considered
                         self.matching_graph.add_edge('D{0}'.format(driver_ind), 'O{0}'.format(order_key),
                                                      weight = expected_reward - baseline_reward)
@@ -45,6 +48,6 @@ class CentralGreedyPolicy:
 
         for driver_key, action in enumerate(actions):
             if action is None:
-                if len(self.city.drivers[driver_key].current_orders) == 0:
-                    actions[driver_key] = (0, Order(None, (0, 0), 0, 0, 0, -1))
+                actions[driver_key] = (0, Order(None, (0, 0), 0, 0, 0, -1))
+
         return actions

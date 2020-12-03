@@ -16,10 +16,10 @@ class Order:
     def __init__(self, o, d, desired_delivery_time, pickup_ddl, fee, index):
         self.ori = o
         self.dest = d
-        #self.desired_delivery_time = desired_delivery_time
-        #self.desired_travel_time = desired_delivery_time - pickup_ddl
+        self.desired_delivery_time = desired_delivery_time
+        self.desired_travel_time = desired_delivery_time - pickup_ddl
         self.fee = fee
-        #self.pickup_ddl = pickup_ddl
+        self.pickup_ddl = pickup_ddl
         self.is_picked = False
         self.picked_time = -1
         self.expected_drop_time = BIG_NUM
@@ -56,7 +56,8 @@ class Driver:
         n = len(nodes) + 1
         dist = {(i,j):dist_func(nodes[i], nodes[j]) for i in range(n-1) for j in range(n-1)}
         dist.update({(i,i):0 for i in range(n-1)})
-        dist.update({(i,n):0 for i in range(n)})
+        dist.update({(i,n-1):0 for i in range(n)})
+        dist.update({(n-1,i): 0 for i in range(n)})
         shp_result = shortest_ham_path(n,dist)
 
         if start_from_current:
@@ -70,6 +71,7 @@ class Driver:
             ind_trajectory = shp_result[1][:-1]
             trajectory = [location_list[i] for i in ind_trajectory]
             travel_time = [dist[int(shp_result[1][i]), int(shp_result[1][i + 1])] for i in range(n - 1)]
+            travel_time.insert(0,0)
             travel_time = np.cumsum(travel_time)
             arrival_time = travel_time[:-1] + self.time + dist_func((self.x,self.y), location_list[0])
 
@@ -90,7 +92,7 @@ class Driver:
 
     def drop_order(self):
         assert round(self.x) == round(self.order_onboard[self.next_order_ind].dest[0])
-        assert round(self.x) == round(self.order_onboard[self.next_order_ind].dest[1])
+        assert round(self.y) == round(self.order_onboard[self.next_order_ind].dest[1])
         self.capacity += 1
         assert self.capacity <= self.max_capacity
         print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind],self.x,self.y))
@@ -124,7 +126,7 @@ class Driver:
         c_tn = 0
         delta_tn = 0
         if zeta == 1:
-            print('DISPATCH: driver {0} goes to {1},{2} from {3},{4}'.format(self.id, x0, y0, self.x,self.y))
+            # print('DISPATCH: driver {0} goes to {1},{2} from {3},{4}'.format(self.id, x0, y0, self.x,self.y))
             # case 1: we know which order to pick
             order_locations = [order.dest for order in self.order_onboard] # noting here we only consider orders on board
             if x0!=x1 and y0!=y1:
@@ -136,7 +138,10 @@ class Driver:
             self.order_drop_sequence = [i - 1 for i in ind_trajectory if i >= 1]
             self.trajectory = trajectory
             self.traj_time = arrival_time
-            self.next_order_ind = self.order_drop_sequence[0]
+            if len(self.order_drop_sequence)>0:
+                self.next_order_ind = self.order_drop_sequence[0]
+            else:
+                self.next_order_ind = -1
             if not self.next_is_drop: # if the car is going to pick an order when dispatched to new area, unpicked order will be lost
                 lost_order = True
             # calculate the difference in time
@@ -159,30 +164,35 @@ class Driver:
         else:
             next_x = self.trajectory[0][0]
             next_y = self.trajectory[0][1]
-        speed = self.driver_features['speed']
+        speed0 = self.driver_features['speed']
         dx = next_x - self.x
         dy = next_y - self.y
         move_along_y = np.random.rand() > 0.5
         if move_along_y:
-            speed = min(speed,abs(dy))
+            speed = min(speed0,abs(dy))
             dxy = (0,  speed* (dy > 0) - speed * (dy < 0))
         else:
-            speed = min(speed,abs(dx))
+            speed = min(speed0,abs(dx))
             dxy = (speed * (dx > 0) - speed * (dx < 0), 0)
-        if dx < EPS:
-            speed = min(speed, abs(dy))
+        if abs(dx) < EPS:
+            speed = min(speed0, abs(dy))
             dxy = (0, speed* (dy > 0) - speed * (dy < 0))
-        if dy < EPS:
-            speed = min(speed, abs(dx))
+        if abs(dy) < EPS:
+            speed = min(speed0, abs(dx))
             dxy = (speed* (dx > 0) - speed * (dx < 0), 0)
+        print('driver {0} from {1},{2}'.format(self.id, self.x, self.y))
         self.x += dxy[0]
         self.y += dxy[1]
         self.time += 1
+        print('dx dy',dx,dy)
+        print('dxy',dxy)
         print('driver {0} moved to {1},{2}'.format(self.id,self.x,self.y))
         print('new traj',self.trajectory)
         print('new traj_time',self.traj_time)
         print('new order sequence', self.order_drop_sequence)
         print('orders on board',[order.index for order in self.order_onboard])
+        if self.order_to_pick:
+            print('order to pick',self.order_to_pick.ori, self.order_to_pick.dest)
         while True:
             if abs(self.x-self.trajectory[0][0])<EPS and abs(self.y-self.trajectory[0][1])<EPS:
                 self.trajectory = self.trajectory[1:]
@@ -217,7 +227,7 @@ class City:
         self.new_available_map = np.zeros((time_horizon,self.width, self.height))
         # driver map is the number of availabe drivers at each location
         self.capacity_profile = [7, 5, 3]
-        self.speed_profile = [0.1, 0.2, 0.25]
+        self.speed_profile = [0.5, 0.5, 1.0]
         # initialize drivers, restaurants and demand(home)
         for i in range(n_drivers):
             type = np.random.choice([0, 1, 2], p=[0.1, 0.8, 0.1])
@@ -315,16 +325,18 @@ class City:
         # action: list of actions for each driver
         # {driver ind i: (zeta_i, order ind o)}
         # for each vehicle, take an action
+        print('time:',self.time,'='*30)
         rewards = []
         #city_observation = {'drivers': self.drivers, 'order_buffer': self.order_buffer}
         for i in range(self.n_drivers):
             zeta_i, order_i = actions[i]
             def dist_func(x,y):
-                return self.travel_time(x,y, self.n_drivers[i].driver_features)
+                return self.travel_time(x,y, self.drivers[i].driver_features)
             if zeta_i==0:
                 this_reward,lost_order = self.drivers[i].take_action([0, 0, 0, 0, 0, 0], dist_func)
             else:
-                print('driver {0} take order {1},{2} -> {3},{4}'.format(i,order_i.ori[0], order_i.ori[1], order_i.dest[0], order_i.dest[1]))
+                self.order_buffer.remove(order_i)
+                print('driver {0} will take order {1},{2} -> {3},{4}'.format(i,order_i.ori[0], order_i.ori[1], order_i.dest[0], order_i.dest[1]))
                 this_reward,lost_order = self.drivers[i].take_action([1, order_i.ori[0], order_i.ori[1], order_i.dest[0], order_i.dest[1], order_i.fee], dist_func)
                 if lost_order and self.drivers[i].order_to_pick_fee>EPS: # if order is given up
                     self.order_buffer.append(self.drivers[i].order_to_pick) # return the order to buffer
