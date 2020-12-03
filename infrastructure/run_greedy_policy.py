@@ -1,7 +1,7 @@
 from envs.city import *
 from policies.greedy_policy import CentralGreedyPolicy
 
-city_test = City((10,10), n_drivers=5, n_restaurants=5)
+
 
 
 city_log = []

@@ -17,13 +17,13 @@ class CentralGreedyPolicy:
         drivers = self.city.drivers
         orders = self.city.order_buffer
         for driver_ind, driver in enumerate(drivers):
-            _, _, _, baseline_reward, _, _ = self.city.vrp_orders(driver, list(driver.current_orders.values()))
+            def dist_func(x,y):
+                return self.city.travel_time(x,y, driver.driver_features)
+            baseline_reward = driver.take_action([0, 0, 0, 0, 0, 0], dist_func)
             for order_key, order in enumerate(orders):
                 # if we can add this order to this driver, then try
-                if len(self.city.drivers[driver_ind].current_orders) + 1 <= self.city.drivers[driver_ind].max_orders:
-                    _, _, _, expected_reward, _, _ = self.city.vrp_orders(driver,
-                                                                          list(driver.current_orders.values()) + [
-                                                                              order])
+                if driver.capacity>0:
+                    expected_reward = driver.take_action([1, order.ori[0], order.ori[1], order.dest[0], order.dest[1], order.fee], dist_func)
                     if expected_reward >= baseline_reward: # only non-negative reward gains are considered
                         self.matching_graph.add_edge('D{0}'.format(driver_ind), 'O{0}'.format(order_key),
                                                      weight = expected_reward - baseline_reward)
@@ -41,9 +41,10 @@ class CentralGreedyPolicy:
             else:
                 this_driver = driver_node_key[node2]
                 this_order = order_node_key[node1]
-            actions[this_driver] = self.city.order_buffer[this_order]
+            actions[this_driver] = (1, self.city.order_buffer[this_order])
+
         for driver_key, action in enumerate(actions):
             if action is None:
                 if len(self.city.drivers[driver_key].current_orders) == 0:
-                    actions[driver_key] = Order(None, (0, 0), 0, 0, 0, -1, is_repostion=True)
+                    actions[driver_key] = (0, Order(None, (0, 0), 0, 0, 0, -1))
         return actions
