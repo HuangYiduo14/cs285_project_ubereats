@@ -2,6 +2,7 @@ import numpy as np
 import pdb
 from infrastructure.tsp_utils import shortest_ham_path
 import math
+import itertools
 BIG_NUM = 99999999
 EPS = 1e-12
 
@@ -102,22 +103,61 @@ class Driver:
         self.next_order_ind = self.order_drop_sequence[0]
         return order_dropped
 
-    def agent_reward(self, b_tn, c_tn, delta_tn, fee, lost_order):
-        if lost_order and self.order_to_pick_fee > EPS:
-            return b_tn - .1*c_tn - .85*delta_tn + fee - 1.1 * self.order_to_pick_fee
+    def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order):
+        if is_lost_order and self.order_to_pick_fee > EPS:
+            return b_tn - .1*c_tn - .85*delta_tn + fee - 1.1 * self.order_to_pick_fee # if we give up the current pickup order, we will have extra penalty
         else:
             return b_tn - .1 * c_tn - .85 * delta_tn + fee
 
+    def agent_observe(self, dist_func):
+        """
+        :return: observation for this agent
+        observation = [current_x, current_y,                         #x_i^t
+        speed, available seats,                                      #v^i
+        has_unpicked_order, order_to_pick_fee,                      #a_t^i
+        trajectory_x0, trajectory_y0, trajectory_t0 - current_time,
+        trajectory_x1, trajectory_y1, trajectory_t1 - current_time,
+        ...
+        trajectory_xm, trajectory_ym, trajectory_tm - current_time  # kappa_t^i
+        ]
+        If the vehicle has a capacity of C, then m = C
+        """
+        if self.next_is_drop:
+            traj = self.trajectory
+            traj_time = self.traj_time
+            unpicked_fee = 0
+        else:
+            order_locations = [order.dest for order in self.order_onboard]
+            traj, _ , traj_time = self.shp_traj(order_locations, dist_func)
+            unpicked_fee = self.order_to_pick_fee
 
-    def take_action(self, action, dist_func, is_attempt=False):
+        traj_time = [t - self.time for t in traj_time]
+        has_unpicked_order = not self.next_is_drop
+        order_space_time_traj = [[traj[i][0], traj[i][1], traj_time[i]] for i in range(len(traj))]
+        # if we want to make a 1d vector:
+        order_space_time_traj = list(itertools.chain(*order_space_time_traj))
+        if len(order_space_time_traj)>0:
+            last_location_time = [traj[-1][0], traj[-1][1], traj_time[-1]+1]
+        else:
+            last_location_time = [self.x, self.y, 1]
+        # pad empty seats with virtual orders
+        for extra_order in range(self.capacity):
+            order_space_time_traj += last_location_time
+            last_location_time[2] += 1
+
+        return [self.x,self.y,
+                self.driver_features['speed'],self.capacity,
+                has_unpicked_order, unpicked_fee] + order_space_time_traj
+
+
+    def take_action(self, action, dist_func):
         """
         :param action: [zeta, x0, y0, x1, y1, fee]
-        zeta = 1 if we will pick (potential) new passengers
+        zeta = 1 if we will pick (potential) new passengers, =0 otherwise
         x0, y0 = location of dispatching
         x1, y1 = if we will pick an order in (x0,y0), (x1,y1) will be its destination
         if we are not going to pick new users, x0 y0 and x1 y1 will be the next order drop location
         :return: reward for one driver and new space-time trajectory
-
         b_tn, c_tn and delta_tn: see DeepPool (7)
         """
         zeta,x0,y0,x1,y1,fee = action
@@ -143,7 +183,7 @@ class Driver:
             else:
                 self.next_order_ind = -1
             if not self.next_is_drop: # if the car is going to pick an order when dispatched to new area, unpicked order will be lost
-                lost_order = True
+                is_lost_order = True
             # calculate the difference in time
             delta_tn = 0
             for i, o in enumerate(self.order_drop_sequence): # i is the sequence while o is the index in order list
@@ -153,7 +193,7 @@ class Driver:
                     delta_tn += dt
             self.next_is_drop = False
             c_tn = dist_func((self.x,self.y),(x0,y0))
-        return self.agent_reward(b_tn,c_tn,delta_tn,fee,lost_order), lost_order
+        return self.agent_reward(b_tn,c_tn,delta_tn,fee,is_lost_order), is_lost_order
 
 
     def move_one_step(self):
@@ -255,12 +295,6 @@ class City:
         self.order_buffer = []
         self.all_orders = []
 
-        # for test only, we add one order at 0,0 and one car at 0,0 to see if the order can be picked immediately
-        self.drivers[0].x = 0
-        self.drivers[0].y = 0
-        self.order_buffer = [Order((0, 0), (1, 1), 20, 10, 100, 0)]
-        self.all_orders = [Order((0, 0), (1, 1), 20, 10, 100, 0)]
-        self.total_orders = 1
 
     def travel_time(self, xy1, xy2, driver_features):
         x1, y1 = xy1
@@ -323,7 +357,7 @@ class City:
 
     def step(self, actions):
         # action: list of actions for each driver
-        # {driver ind i: (zeta_i, order ind o)}
+        # {driver ind i: (zeta_i, order o)}
         # for each vehicle, take an action
         print('time:',self.time,'='*30)
         rewards = []
@@ -349,6 +383,3 @@ class City:
         self.time += 1
         return rewards
 
-
-if __name__ =='__main__':
-    city_test = City((10, 10), n_drivers=1, n_restaurants=5)

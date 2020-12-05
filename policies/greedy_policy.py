@@ -1,5 +1,5 @@
 import numpy as np
-from envs.city import City, Order
+from envs.city import Order
 import networkx as nx
 import copy
 
@@ -17,11 +17,11 @@ class CentralGreedyPolicy:
         drivers = self.city.drivers
         orders = self.city.order_buffer
         for driver_ind, driver1 in enumerate(drivers):
-            driver = copy.deepcopy(driver1)
+            driver = copy.deepcopy(driver1) # here we make copies to preserve data
             def dist_func(x,y):
                 return self.city.travel_time(x,y, driver.driver_features)
 
-            baseline_reward,_ = driver.take_action([0, 0, 0, 0, 0, 0], dist_func)
+            baseline_reward,_ = driver.take_action([0, 0, 0, 0, 0, 0], dist_func) # calculate the reward for not taking new orders
             for order_key, order in enumerate(orders):
                 # if we can add this order to this driver, then try
                 if driver.capacity>0:
