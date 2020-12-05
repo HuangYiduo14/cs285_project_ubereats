@@ -358,6 +358,7 @@ class City:
     def step(self, actions):
         # action: list of actions for each driver
         # {driver ind i: (zeta_i, order o)}
+        # IMPORRANT: this action is not the same as the action we defined for driver, we are still assigning orders to drivers.
         # for each vehicle, take an action
         print('time:',self.time,'='*30)
         rewards = []
