@@ -5,6 +5,8 @@ from infrastructure.tsp_utils import shortest_ham_path
 import math
 import itertools
 import gym
+from gym.utils import seeding
+import copy
 
 BIG_NUM = 99999999
 EPS = 1e-12
@@ -55,23 +57,8 @@ class Driver:
         self.order_to_pick = None # an Order object
         self.order_candidate = Order([self.x, self.y], [self.x, self.y], BIG_NUM, BIG_NUM, 0, BIG_NUM) # an Order object
 
-        self.action_space = gym.spaces.Discrete(1)
-        self.observation_space = gym.spaces.Box(low=np.array([0,0,0,0]+[0 for _ in range(2*MAX_CAP)]+
-                                                             [0,0,0,0,0]+[0,0,0,0,0]),
-                                                high=np.array([10,10,1,MAX_CAP]+[10 for _ in range(2*MAX_CAP)]+
-                                                             [10,10,10,10,BIG_NUM]+[10,10,10,10,BIG_NUM]))
-        """
-        observation space:
-        [current_x, current_y,  # x_i^t
-         speed, available seats,  # v^i
-         trajectory_x0, trajectory_y0,
-         trajectory_x1, trajectory_y1,
-         ...
-         trajectory_xm, trajectory_ym,  # kappa_t^i
-         order_to_pick: ori_x, ori_y, dest_x, dest_y, fee
-        order_candidate: ori_x, ori_y, dest_x, dest_y, fee
-        ]
-        """
+
+
 
 
     def shp_traj(self, location_list, dist_func, start_from_current=True):
@@ -314,11 +301,10 @@ class Driver:
         return self.x, self.y
 
 
-class City:
+class City(gym.Env):
     def __init__(self, size, n_drivers, n_restaurants, seed=1, even_demand_distr=True, demand_distr=None,
                  time_horizon=100):
-        self.seed = seed
-        np.random.seed(seed)
+        self.seed0 = seed
         # initialize the city map
         self.time = 0
         self.time_horizon = time_horizon
@@ -337,7 +323,11 @@ class City:
         self.capacity_profile = [MAX_CAP, MAX_CAP - 1, MAX_CAP - 2]
         self.speed_profile = [0.05, 0.1, 0.12]
         # initialize drivers, restaurants and demand(home)
+        self.state = []
+        self.seed(self.seed0)
         for i in range(n_drivers):
+            def dist_func(x, y):
+                return self.travel_time(x, y, self.drivers[i].driver_features)
             type = np.random.choice([0, 1, 2], p=[0.1, 0.8, 0.1])
             home_x = round(np.random.rand() * self.width)
             home_y = round(np.random.rand() * self.height)
@@ -346,6 +336,7 @@ class City:
             self.drivers.append(Driver(home_x, home_y, driver_id=i, driver_features=driver_features,
                                        max_capacity=self.capacity_profile[type]))
             self.driver_map[home_x, home_y] += 1
+            self.state += self.drivers[i].agent_observe(dist_func)
 
         self.restaurants = [
             Restaurant(round(np.random.rand() * self.width / 2.), round(np.random.rand() * self.height / 2.),
@@ -362,6 +353,50 @@ class City:
         # initialize order buffer
         self.order_buffer = []
         self.all_orders = []
+
+        # initialize action space
+        self.action_space = gym.spaces.MultiBinary(self.n_drivers)
+        obs_lb_one_driver = [0, 0, 0, 0] + [0 for _ in range(2 * MAX_CAP)] + \
+                                                             [0, 0, 0, 0, 0] + [0, 0, 0, 0, 0]
+        obs_ub_one_driver = [10, 10, 1, MAX_CAP] + [10 for _ in range(2 * MAX_CAP)] + \
+                                                              [10, 10, 10, 10, BIG_NUM] + [10, 10, 10, 10, BIG_NUM]
+        self.observation_space = gym.spaces.Box(low=np.array([copy.deepcopy(obs_lb_one_driver) for _ in range(self.n_drivers)]),
+                                                high=np.array([copy.deepcopy(obs_ub_one_driver) for _ in range(self.n_drivers)]))
+        self.state = np.array(self.state)
+
+        """
+        observation space for one driver:
+            [current_x, current_y,  # x_i^t
+                 speed, available seats,  # v^i
+                 trajectory_x0, trajectory_y0,
+                 trajectory_x1, trajectory_y1,
+                 ...
+                 trajectory_xm, trajectory_ym,  # kappa_t^i
+                 order_to_pick: ori_x, ori_y, dest_x, dest_y, fee
+                order_candidate: ori_x, ori_y, dest_x, dest_y, fee
+            ]
+        """
+    def reset(self):
+        self.seed(self.seed0)
+        for i in range(self.n_drivers):
+            def dist_func(x, y):
+                return self.travel_time(x, y, self.drivers[i].driver_features)
+
+            type = np.random.choice([0, 1, 2], p=[0.1, 0.8, 0.1])
+            home_x = round(np.random.rand() * self.width)
+            home_y = round(np.random.rand() * self.height)
+            driver_features = {'type': type, 'home_address': [home_x, home_y], 'is_last_order': False,
+                               'speed': self.speed_profile[type]}
+            self.drivers.append(Driver(home_x, home_y, driver_id=i, driver_features=driver_features,
+                                       max_capacity=self.capacity_profile[type]))
+            self.driver_map[home_x, home_y] += 1
+            self.state += self.drivers[i].agent_observe(dist_func)
+        self.order_buffer = []
+
+        return self.state
+
+    def seed(self, seed=None):
+        seeding.np_random(seed)
 
     def travel_time(self, xy1, xy2, driver_features):
         x1, y1 = xy1
@@ -432,9 +467,8 @@ class City:
         print('time:', self.time, '=' * 30)
         rewards = []
         observations = []
-        next_observations = []
         done = []
-        info = None
+        info = {}
         # city_observation = {'drivers': self.drivers, 'order_buffer': self.order_buffer}
         order_candidate_selected = []
         restaurant_loc_list = [[r.x, r.y] for r in self.restaurants]
@@ -475,7 +509,9 @@ class City:
             ###########################################################
 
             # observe what happens before taking action
-            observations.append(self.drivers[i].agent_observe(dist_func))
+            #observations.append(self.drivers[i].agent_observe(dist_func))
+            observations += self.drivers[i].agent_observe(dist_func)
+
             zeta_i = actions[i]
             this_reward, is_lost_order, lost_order = self.drivers[i].take_action(zeta_i, dist_func)
             if zeta_i == 1:
@@ -497,4 +533,5 @@ class City:
             # if an other has not been picked up, delete it from buffer
         self.order_buffer = [order for order in self.order_buffer if order.pickup_ddl > self.time]
         self.time += 1
-        return observations, rewards, done, info
+        self.state = observations
+        return np.array(observations), np.array(rewards), done[0], info
