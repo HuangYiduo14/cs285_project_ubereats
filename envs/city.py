@@ -4,6 +4,7 @@ from random import shuffle, choices
 from infrastructure.tsp_utils import shortest_ham_path
 import math
 import itertools
+import gym
 
 BIG_NUM = 99999999
 EPS = 1e-12
@@ -53,6 +54,25 @@ class Driver:
         self.next_order_ind = -1 #=order_drop_sequence[0]
         self.order_to_pick = None # an Order object
         self.order_candidate = Order([self.x, self.y], [self.x, self.y], BIG_NUM, BIG_NUM, 0, BIG_NUM) # an Order object
+
+        self.action_space = gym.spaces.Discrete(1)
+        self.observation_space = gym.spaces.Box(low=np.array([0,0,0,0]+[0 for _ in range(2*MAX_CAP)]+
+                                                             [0,0,0,0,0]+[0,0,0,0,0]),
+                                                high=np.array([10,10,1,MAX_CAP]+[10 for _ in range(2*MAX_CAP)]+
+                                                             [10,10,10,10,BIG_NUM]+[10,10,10,10,BIG_NUM]))
+        """
+        observation space:
+        [current_x, current_y,  # x_i^t
+         speed, available seats,  # v^i
+         trajectory_x0, trajectory_y0,
+         trajectory_x1, trajectory_y1,
+         ...
+         trajectory_xm, trajectory_ym,  # kappa_t^i
+         order_to_pick: ori_x, ori_y, dest_x, dest_y, fee
+        order_candidate: ori_x, ori_y, dest_x, dest_y, fee
+        ]
+        """
+
 
     def shp_traj(self, location_list, dist_func, start_from_current=True):
 
