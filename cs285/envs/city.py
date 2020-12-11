@@ -102,7 +102,9 @@ class Driver:
         self.capacity -= 1
         assert self.capacity >= 0
         # TODO: delete print function
-        # print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y, new_order.dest))
+        print('time:', self.time)
+        print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y,
+                                                                             new_order.dest))
         new_order.is_picked = True
         new_order.picked_time = self.time
         self.next_is_drop = True
@@ -116,7 +118,9 @@ class Driver:
         self.capacity += 1
         assert self.capacity <= self.max_capacity
         # TODO: delete print function
-        # print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind],self.x, self.y))
+        print('time:', self.time)
+        print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind],
+                                                                    self.x, self.y))
         order_dropped = self.order_onboard.pop(self.next_order_ind)
         self.order_drop_sequence = self.order_drop_sequence[1:]
         self.order_drop_sequence = [i if i < self.next_order_ind else i - 1 for i in self.order_drop_sequence]
@@ -204,7 +208,7 @@ class Driver:
         c_tn = 0
         delta_tn = 0
         lost_order = None
-        if zeta == 1:
+        if zeta == 1 and self.capacity >= 1:
             fee = self.order_candidate.fee
             # print('DISPATCH: driver {0} goes to {1},{2} from {3},{4}'.format(self.id, x0, y0, self.x,self.y))
             order_locations = [order.dest for order in
@@ -237,8 +241,10 @@ class Driver:
             self.next_is_drop = False
             self.order_to_pick = self.order_candidate
             c_tn = dist_func((self.x, self.y), (x0, y0))
-        reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order)
 
+        reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order)
+        if zeta == 1 and self.capacity < 1:
+            reward = -BIG_NUM // 10000
         return reward, is_lost_order, lost_order
 
     def add_to_candidate(self, new_order_candidate):
@@ -275,15 +281,15 @@ class Driver:
 
         # print some informations
         # TODO: delete these lines
-        # print('dx dy', dx, dy)
-        # print('dxy', dxy)
-        # print('driver {0} moved to {1},{2}'.format(self.id, self.x, self.y))
-        # print('new traj', self.trajectory)
-        # print('new traj_time', self.traj_time)
-        # print('new order sequence', self.order_drop_sequence)
-        # print('orders on board', [order.index for order in self.order_onboard])
-        # if self.order_to_pick:
-        # print('order to pick', self.order_to_pick.ori, self.order_to_pick.dest)
+        print('dx dy', dx, dy)
+        print('dxy', dxy)
+        print('driver {0} moved to {1},{2}'.format(self.id, self.x, self.y))
+        print('new traj', self.trajectory)
+        print('new traj_time', self.traj_time)
+        print('new order sequence', self.order_drop_sequence)
+        print('orders on board', [order.index for order in self.order_onboard])
+        if self.order_to_pick:
+            print('order to pick', self.order_to_pick.ori, self.order_to_pick.dest)
         while True:
             # check all possible points along the trajectory that can be picked or droped
             if len(self.trajectory) > 0 and abs(round(self.x) - round(self.trajectory[0][0])) < EPS and abs(
@@ -456,6 +462,7 @@ class City(gym.Env):
     def step(self, actions):
         # action: list of actions for each driver
         # e.g. [0,1,0,1,...]
+        self.order_generate()
         print('time:', self.time, '=' * 30)
         rewards = []
         observations = []
@@ -492,7 +499,7 @@ class City(gym.Env):
                         break
             # if no new order available, assign a re-dispatch order
             if not new_order_found:
-                # print('Fake order assigned')
+                print('Fake order assigned')
                 dispatched_loc = choices(restaurant_loc_list, restaurant_attractive_list)
                 dispatched_loc = dispatched_loc[0]
                 self.drivers[i].add_to_candidate(Order(dispatched_loc, dispatched_loc, self.time, BIG_NUM, 0, BIG_NUM))
@@ -507,7 +514,7 @@ class City(gym.Env):
 
             zeta_i = actions[i]
             this_reward, is_lost_order, lost_order = self.drivers[i].take_action(zeta_i, dist_func)
-            if zeta_i == 1:
+            if zeta_i == 1 and self.drivers[i].capacity >= 1:
                 order_i = self.drivers[i].order_to_pick
                 if order_i.fee > EPS:
                     self.order_buffer.remove(order_i)
