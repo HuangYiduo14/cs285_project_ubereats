@@ -127,10 +127,10 @@ class Driver:
         self.next_order_ind = self.order_drop_sequence[0]
         return order_dropped
 
-    def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order):
+    def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order,lost_order_fee):
         # TODO: change reward weight here in experiments
         if is_lost_order and self.order_to_pick.fee > EPS:
-            return b_tn - .0001 * c_tn - .85 * delta_tn + 50 * fee - 1.1 * self.order_to_pick.fee  # if we give up the current pickup order, we will have extra penalty
+            return b_tn - .0001 * c_tn - .85 * delta_tn + 50 * fee - 50* lost_order_fee  # if we give up the current pickup order, we will have extra penalty
         else:
             return b_tn - .0001 * c_tn - .85 * delta_tn + 50 * fee
 
@@ -204,6 +204,7 @@ class Driver:
         x1, y1 = self.order_candidate.dest
         fee = 0
         is_lost_order = False
+        lost_order_fee = 0
         b_tn = len(self.order_onboard)
         c_tn = 0
         delta_tn = 0
@@ -230,6 +231,7 @@ class Driver:
                     not self.next_is_drop) and self.order_to_pick:  # if the car is going to pick an order when dispatched to new area, unpicked order will be lost
                 is_lost_order = True
                 lost_order = self.order_to_pick
+                lost_order_fee = lost_order.fee
             # calculate the difference in time
             delta_tn = 0
             for i, o in enumerate(self.order_drop_sequence):  # i is the sequence while o is the index in order list
@@ -242,7 +244,7 @@ class Driver:
             self.order_to_pick = self.order_candidate
             c_tn = dist_func((self.x, self.y), (x0, y0))
 
-        reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order)
+        reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee)
         if zeta == 1 and self.capacity < 1:
             reward = -BIG_NUM // 10000
         return reward, is_lost_order, lost_order
@@ -484,6 +486,8 @@ class City(gym.Env):
             for search_mult in range(1, 1 + dist_func([0, 0], [10, 10]) // SEARCH_RADIUS):
                 # gradully increase the search radius
                 if new_order_found:
+                    break
+                if self.drivers[i].capacity < 1:
                     break
                 current_xy = [self.drivers[i].x, self.drivers[i].y]
                 candidate_orders = [order for order in self.order_buffer if
