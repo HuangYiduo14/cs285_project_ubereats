@@ -102,7 +102,7 @@ class Driver:
         self.capacity -= 1
         assert self.capacity >= 0
         # TODO: delete print function
-        print('time:', self.time)
+        # print('time:',self.time)
         print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y,
                                                                              new_order.dest))
         new_order.is_picked = True
@@ -118,8 +118,9 @@ class Driver:
         self.capacity += 1
         assert self.capacity <= self.max_capacity
         # TODO: delete print function
-        print('time:', self.time)
-        print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind],
+        # print('time:',self.time)
+        print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id,
+                                                                    self.order_onboard[self.next_order_ind].index,
                                                                     self.x, self.y))
         order_dropped = self.order_onboard.pop(self.next_order_ind)
         self.order_drop_sequence = self.order_drop_sequence[1:]
@@ -127,10 +128,10 @@ class Driver:
         self.next_order_ind = self.order_drop_sequence[0]
         return order_dropped
 
-    def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order,lost_order_fee):
+    def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee):
         # TODO: change reward weight here in experiments
         if is_lost_order and self.order_to_pick.fee > EPS:
-            return b_tn - .0001 * c_tn - .85 * delta_tn + 50 * fee - 50* lost_order_fee  # if we give up the current pickup order, we will have extra penalty
+            return b_tn - .0001 * c_tn - .85 * delta_tn + 50 * fee - 50 * lost_order_fee  # if we give up the current pickup order, we will have extra penalty
         else:
             return b_tn - .0001 * c_tn - .85 * delta_tn + 50 * fee
 
@@ -204,11 +205,11 @@ class Driver:
         x1, y1 = self.order_candidate.dest
         fee = 0
         is_lost_order = False
-        lost_order_fee = 0
         b_tn = len(self.order_onboard)
         c_tn = 0
         delta_tn = 0
         lost_order = None
+        lost_order_fee = 0
         if zeta == 1 and self.capacity >= 1:
             fee = self.order_candidate.fee
             # print('DISPATCH: driver {0} goes to {1},{2} from {3},{4}'.format(self.id, x0, y0, self.x,self.y))
@@ -283,15 +284,15 @@ class Driver:
 
         # print some informations
         # TODO: delete these lines
-        print('dx dy', dx, dy)
-        print('dxy', dxy)
-        print('driver {0} moved to {1},{2}'.format(self.id, self.x, self.y))
-        print('new traj', self.trajectory)
-        print('new traj_time', self.traj_time)
-        print('new order sequence', self.order_drop_sequence)
-        print('orders on board', [order.index for order in self.order_onboard])
-        if self.order_to_pick:
-            print('order to pick', self.order_to_pick.ori, self.order_to_pick.dest)
+        # print('dx dy', dx, dy)
+        # print('dxy', dxy)
+        # print('driver {0} moved to {1},{2}'.format(self.id, self.x, self.y))
+        # print('new traj', self.trajectory)
+        # print('new traj_time', self.traj_time)
+        # print('new order sequence', self.order_drop_sequence)
+        # print('orders on board', [order.index for order in self.order_onboard])
+        # if self.order_to_pick:
+        # print('order to pick', self.order_to_pick.ori, self.order_to_pick.dest)
         while True:
             # check all possible points along the trajectory that can be picked or droped
             if len(self.trajectory) > 0 and abs(round(self.x) - round(self.trajectory[0][0])) < EPS and abs(
@@ -327,7 +328,7 @@ class City(gym.Env):
         self.new_available_map = np.zeros((time_horizon, self.width, self.height))
         # driver map is the number of availabe drivers at each location
         self.capacity_profile = [MAX_CAP, MAX_CAP - 1, MAX_CAP - 2]
-        self.speed_profile = [0.05, 0.1, 0.12]
+        self.speed_profile = [0.5, 0.5, 0.5]
         # initialize drivers, restaurants and demand(home)
         self.state = []
         self.seed(self.seed0)
@@ -465,7 +466,7 @@ class City(gym.Env):
         # action: list of actions for each driver
         # e.g. [0,1,0,1,...]
         self.order_generate()
-        print('time:', self.time, '=' * 30)
+        # print('time:', self.time, '=' * 30)
         rewards = []
         observations = []
         done = []
@@ -487,8 +488,6 @@ class City(gym.Env):
                 # gradully increase the search radius
                 if new_order_found:
                     break
-                if self.drivers[i].capacity < 1:
-                    break
                 current_xy = [self.drivers[i].x, self.drivers[i].y]
                 candidate_orders = [order for order in self.order_buffer if
                                     search_mult * SEARCH_RADIUS >= dist_func(order.ori, current_xy) >= (
@@ -503,7 +502,7 @@ class City(gym.Env):
                         break
             # if no new order available, assign a re-dispatch order
             if not new_order_found:
-                print('Fake order assigned')
+                # print('Fake order assigned')
                 dispatched_loc = choices(restaurant_loc_list, restaurant_attractive_list)
                 dispatched_loc = dispatched_loc[0]
                 self.drivers[i].add_to_candidate(Order(dispatched_loc, dispatched_loc, self.time, BIG_NUM, 0, BIG_NUM))
