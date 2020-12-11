@@ -1,7 +1,7 @@
 from envs.city import *
 from policies.greedy_policy import CentralGreedyPolicy
 
-city_test = City((10, 10), n_drivers=3, n_restaurants=5)
+city_test = City((10, 10), n_drivers=1, n_restaurants=5)
 for t in range(100):
     city_test.order_generate()
     greedy_policy = CentralGreedyPolicy(city_test)
