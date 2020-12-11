@@ -38,7 +38,7 @@ class Driver:
         self.x = x
         self.y = y
         self.time = 0
-        self.driver_features = driver_features
+        self.driver_features = driver_features # including speed
         self.id = driver_id
 
         self.max_capacity = max_capacity
@@ -47,22 +47,25 @@ class Driver:
         self.trajectory = []
         self.traj_time = []
 
-        self.next_is_drop = False
-        self.order_onboard = []
-        self.order_drop_sequence = []
-        self.next_order_ind = -1
-        self.order_to_pick = None
-        self.order_candidate = Order([self.x, self.y], [self.x, self.y], BIG_NUM, BIG_NUM, 0, BIG_NUM)
+        self.next_is_drop = False # whether the driver is on its way to drop or pick
+        self.order_onboard = [] # list of Order
+        self.order_drop_sequence = [] # list of index in order, order_drop_sequence[0] will be dropped first
+        self.next_order_ind = -1 #=order_drop_sequence[0]
+        self.order_to_pick = None # an Order object
+        self.order_candidate = Order([self.x, self.y], [self.x, self.y], BIG_NUM, BIG_NUM, 0, BIG_NUM) # an Order object
 
     def shp_traj(self, location_list, dist_func, start_from_current=True):
-        if start_from_current:
+
+        # our shortest_ham_path function will give a shortest path using the first node and the last node
+        # therefore, we need to add the current location as the start point and a virtue point that is
+        if start_from_current: # if start from current location, we add the current location
             nodes = [(self.x, self.y)] + location_list
         else:
             nodes = location_list
         n = len(nodes) + 1
         dist = {(i, j): dist_func(nodes[i], nodes[j]) for i in range(n - 1) for j in range(n - 1)}
         dist.update({(i, i): 0 for i in range(n - 1)})
-        dist.update({(i, n - 1): 0 for i in range(n)})
+        dist.update({(i, n - 1): 0 for i in range(n)}) # we add a virtual end point n-1, such that weight(i,n-1)=0 forall node i
         dist.update({(n - 1, i): 0 for i in range(n)})
         shp_result = shortest_ham_path(n, dist)
 
@@ -81,6 +84,9 @@ class Driver:
             travel_time = np.cumsum(travel_time)
             arrival_time = travel_time[:-1] + self.time + dist_func((self.x, self.y), location_list[0])
 
+        # trajectory is the list of locations [[x0,y0],[x1,y1],...]
+        # ind_trajectory is the index of the shortest path
+        # arrival_time is the arrival time list [t0,t1,...]
         return trajectory, ind_trajectory, arrival_time
 
     def pickup_order(self, new_order):
@@ -88,6 +94,7 @@ class Driver:
         assert round(self.y) == round(new_order.ori[1])
         self.capacity -= 1
         assert self.capacity >= 0
+        # TODO: delete print function
         print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y, new_order.dest))
         new_order.is_picked = True
         new_order.picked_time = self.time
@@ -101,6 +108,7 @@ class Driver:
         assert round(self.y) == round(self.order_onboard[self.next_order_ind].dest[1])
         self.capacity += 1
         assert self.capacity <= self.max_capacity
+        # TODO: delete print function
         print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind],
                                                                     self.x, self.y))
         order_dropped = self.order_onboard.pop(self.next_order_ind)
@@ -110,6 +118,7 @@ class Driver:
         return order_dropped
 
     def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order):
+        # TODO: change reward weight here in experiments
         if is_lost_order and self.order_to_pick.fee > EPS:
             return b_tn - .0001 * c_tn - .85 * delta_tn + 50 * fee - 1.1 * self.order_to_pick.fee  # if we give up the current pickup order, we will have extra penalty
         else:
@@ -231,7 +240,7 @@ class Driver:
         self.order_candidate = new_order_candidate
 
     def move_one_step(self):
-        # move the vehicle in one time step according to its current_orders, vrp trajectory and current location
+        # move the vehicle in one time step according to its current_orders, shp trajectory and current location
         if len(self.trajectory) == 0:
             next_x = self.x
             next_y = self.y
@@ -258,6 +267,9 @@ class Driver:
         self.x += dxy[0]
         self.y += dxy[1]
         self.time += 1
+
+        # print some informations
+        # TODO: delete these lines
         print('dx dy', dx, dy)
         print('dxy', dxy)
         print('driver {0} moved to {1},{2}'.format(self.id, self.x, self.y))
@@ -268,6 +280,7 @@ class Driver:
         if self.order_to_pick:
             print('order to pick', self.order_to_pick.ori, self.order_to_pick.dest)
         while True:
+            # check all possible points along the trajectory that can be picked or droped
             if len(self.trajectory) > 0 and abs(round(self.x) - round(self.trajectory[0][0])) < EPS and abs(
                     round(self.y) - round(self.trajectory[0][1])) < EPS:
                 self.trajectory = self.trajectory[1:]
@@ -410,17 +423,19 @@ class City:
             def dist_func(x, y):
                 return self.travel_time(x, y, self.drivers[i].driver_features)
 
+            ##############################################################
+            # randomly assign a new order to each driver
+            ##############################################################
+
             new_order_found = False
             for search_mult in range(1, 1 + dist_func([0,0],[10,10]) // SEARCH_RADIUS):
+                # gradully increase the search radius
                 if new_order_found:
                     break
                 current_xy = [self.drivers[i].x, self.drivers[i].y]
                 candidate_orders = [order for order in self.order_buffer if
                                     search_mult * SEARCH_RADIUS >= dist_func(order.ori, current_xy) >= (search_mult - 1) * SEARCH_RADIUS]
                 shuffle(candidate_orders)
-                #print('size of buffer', len(self.order_buffer))
-                #print('size of cand orders',len(candidate_orders))
-                #if len(self.order_buffer)>0:
                 #    pdb.set_trace()
                 for cand_order in candidate_orders:
                     if cand_order not in order_candidate_selected:
@@ -428,12 +443,18 @@ class City:
                         order_candidate_selected.append(cand_order)
                         new_order_found = True
                         break
+            # if no new order available, assign a re-dispatch order
             if not new_order_found:
                 print('Fake order assigned')
                 dispatched_loc = choices(restaurant_loc_list, restaurant_attractive_list)
                 dispatched_loc = dispatched_loc[0]
                 self.drivers[i].add_to_candidate(Order(dispatched_loc, dispatched_loc, self.time, BIG_NUM, 0, BIG_NUM))
 
+            ###########################################################
+            # take action
+            ###########################################################
+
+            # observe what happens before taking action
             observations.append(self.drivers[i].agent_observe(dist_func))
             zeta_i = actions[i]
             this_reward, is_lost_order, lost_order = self.drivers[i].take_action(zeta_i, dist_func)
@@ -446,11 +467,14 @@ class City:
                 if is_lost_order and lost_order.fee > EPS:  # if order is given up
                     self.order_buffer.append(lost_order)  # return the order to buffer
             rewards.append(this_reward)
+
+            #################################################################
+            # move one step and decide pickup/drop orders
+            #################################################################
             self.drivers[i].move_one_step()
 
-            next_observations.append(self.drivers[i].agent_observe(dist_func))
             done.append(False)
             # if an other has not been picked up, delete it from buffer
         self.order_buffer = [order for order in self.order_buffer if order.pickup_ddl > self.time]
         self.time += 1
-        return observations, rewards, next_observations, done, info
+        return observations, rewards, done, info

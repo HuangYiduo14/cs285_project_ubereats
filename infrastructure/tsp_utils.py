@@ -8,7 +8,11 @@ def shortest_ham_path(n, dist=None):
     """
     Solve shortest Hamiltonian path as a variant of TSP
     the path must start from node 0 and end in n-1
-    adapted from tsp package
+
+    For example, input [0,1,2,3,4,5], output [0,2,3,4,1,5] will be the shortest path start from 0 and end at 5
+    while all vertices are visited exactly once.
+
+    Adapted from tsp package
     """
     #n = len(nodes)
     for i in range(1,n-1):
@@ -27,7 +31,7 @@ def shortest_ham_path(n, dist=None):
         m += lpSum(v.VarIJ) == 1  # inflow
         m += lpSum(v.VarJI) == 1  # outflow
     for _, (i, j, _, vij, vji) in a.query("NodeI!=0 & NodeJ!=0").iterrows():
-        m += u[i] + 1 - (n - 1) * (1 - vij) + (n - 3) * vji <= u[j]
+        m += u[i] + 1 - (n - 1) * (1 - vij) + (n - 3) * vji <= u[j] # variant of MTZ constraints
     for _, (_, j, _, v0j, vj0) in a.query("NodeI==0").iterrows():
         m += 1 + (1 - v0j) + (n - 3) * vj0 <= u[j]
     for _, (i, _, _, vi0, v0i) in a.query("NodeJ==0").iterrows():
