@@ -1,5 +1,5 @@
-from envs.city import *
-from policies.greedy_policy import CentralGreedyPolicy
+from cs285.envs.city import *
+from cs285.policies.greedy_policy import CentralGreedyPolicy
 
 city_test = City((10, 10), n_drivers=1, n_restaurants=5)
 for t in range(100):
