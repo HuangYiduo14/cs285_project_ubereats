@@ -1,18 +1,19 @@
 import numpy as np
 import pdb
 from random import shuffle, choices
-from cs285.infrastructure.tsp_utils import shortest_ham_path
+from cs285.infrastructure.tsp_utils import shortest_ham_path, solve_tsp_dynamic_programming
 import math
 import itertools
 import gym
 from gym.utils import seeding
 import copy
+import random
 
 BIG_NUM = 99999999
 EPS = 1e-12
 SEARCH_RADIUS = 3
 MAX_ORDER_BUFFER = 50
-MAX_CAP = 5
+MAX_CAP = 4
 
 
 class Restaurant:
@@ -50,10 +51,13 @@ class Driver:
         self.trajectory = []
         self.traj_time = []
 
+        self.last_drop_traj = []
+        self.last_drop_traj_time = []
+
         self.next_is_drop = False  # whether the driver is on its way to drop or pick
         self.order_onboard = []  # list of Order
         self.order_drop_sequence = []  # list of index in order, order_drop_sequence[0] will be dropped first
-        self.next_order_ind = -1  # =order_drop_sequence[0]
+        self.next_order_ind = BIG_NUM  # =order_drop_sequence[0]
         self.order_to_pick = None  # an Order object
         self.order_candidate = Order([self.x, self.y], [self.x, self.y], BIG_NUM, BIG_NUM, 0,
                                      BIG_NUM)  # an Order object
@@ -62,32 +66,48 @@ class Driver:
 
         # our shortest_ham_path function will give a shortest path using the first node and the last node
         # therefore, we need to add the current location as the start point and a virtue point that is
+        if len(location_list) == 0:
+            return [], [], []
+
         if start_from_current:  # if start from current location, we add the current location
             nodes = [(self.x, self.y)] + location_list
+            if len(nodes) == 2:
+                return location_list, [0], [self.time + dist_func((self.x, self.y), location_list[0])]
         else:
             nodes = location_list
-        n = len(nodes) + 1
-        dist = {(i, j): dist_func(nodes[i], nodes[j]) for i in range(n - 1) for j in range(n - 1)}
-        dist.update({(i, i): 0 for i in range(n - 1)})
-        dist.update({(i, n - 1): 0 for i in
-                     range(n)})  # we add a virtual end point n-1, such that weight(i,n-1)=0 forall node i
-        dist.update({(n - 1, i): 0 for i in range(n)})
-        shp_result = shortest_ham_path(n, dist)
+            if len(nodes) == 2:
+                return location_list, [0, 1], [self.time + dist_func((self.x, self.y), location_list[0]),
+                                               self.time + dist_func((self.x, self.y), location_list[0]) + dist_func(
+                                                   location_list[0], location_list[1])]
+            elif len(nodes) == 1:
+                return location_list, [0], [self.time + dist_func((self.x, self.y), location_list[0])]
+        n = len(nodes)
+        dist = np.zeros((n, n))
+        for i in range(n):
+            for j in range(n):
+                dist[i, j] = dist_func(nodes[i], nodes[j])
+        dist[:, 0] = 0
+
+        # shp_result = shortest_ham_path(n, dist)
+        # import ipdb; ipdb.set_trace()
+        shp_result = solve_tsp_dynamic_programming(dist)
+
+        shp_result = shp_result[1]
 
         if start_from_current:
-            ind_trajectory = shp_result[1][1:-1]
+            ind_trajectory = shp_result[1:]
             ind_trajectory = [i - 1 for i in ind_trajectory]
             trajectory = [location_list[i] for i in ind_trajectory]
-            travel_time = [dist[int(shp_result[1][i]), int(shp_result[1][i + 1])] for i in range(n - 1)]
+            travel_time = [dist[int(shp_result[i]), int(shp_result[i + 1])] for i in range(n - 1)]
             travel_time = np.cumsum(travel_time)
-            arrival_time = travel_time[:-1] + self.time
+            arrival_time = travel_time + self.time
         else:
-            ind_trajectory = shp_result[1][:-1]
+            ind_trajectory = shp_result
             trajectory = [location_list[i] for i in ind_trajectory]
-            travel_time = [dist[int(shp_result[1][i]), int(shp_result[1][i + 1])] for i in range(n - 1)]
+            travel_time = [dist[int(shp_result[i]), int(shp_result[i + 1])] for i in range(n - 1)]
             travel_time.insert(0, 0)
             travel_time = np.cumsum(travel_time)
-            arrival_time = travel_time[:-1] + self.time + dist_func((self.x, self.y), location_list[0])
+            arrival_time = travel_time + self.time + dist_func((self.x, self.y), location_list[0])
 
         # trajectory is the list of locations [[x0,y0],[x1,y1],...]
         # ind_trajectory is the index of the shortest path
@@ -125,7 +145,11 @@ class Driver:
         order_dropped = self.order_onboard.pop(self.next_order_ind)
         self.order_drop_sequence = self.order_drop_sequence[1:]
         self.order_drop_sequence = [i if i < self.next_order_ind else i - 1 for i in self.order_drop_sequence]
-        self.next_order_ind = self.order_drop_sequence[0]
+        if len(self.order_drop_sequence) > 0:
+            self.next_order_ind = self.order_drop_sequence[0]
+        else:
+            self.next_order_ind = BIG_NUM
+            self.next_is_drop = False
         return order_dropped
 
     def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee):
@@ -219,8 +243,7 @@ class Driver:
                 location_list = [(x0, y0)] + order_locations + [(x1, y1)]
             else:
                 location_list = [(x0, y0)] + order_locations  # case 2: we only know the origin of the new order
-            trajectory, ind_trajectory, arrival_time = self.shp_traj(location_list, dist_func,
-                                                                     start_from_current=False)
+            trajectory, ind_trajectory, arrival_time = self.shp_traj(location_list, dist_func, start_from_current=False)
             self.order_drop_sequence = [i - 1 for i in ind_trajectory if i >= 1]
             self.trajectory = trajectory
             self.traj_time = arrival_time
@@ -299,10 +322,10 @@ class Driver:
                     round(self.y) - round(self.trajectory[0][1])) < EPS:
                 self.trajectory = self.trajectory[1:]
                 self.traj_time = self.traj_time[1:]
-                if self.next_is_drop:
-                    self.drop_order()
-                else:
+                if not self.next_is_drop:
                     self.pickup_order(self.order_to_pick)
+                else:
+                    self.drop_order()
             else:
                 break
         return self.x, self.y
@@ -312,6 +335,9 @@ class City(gym.Env):
     def __init__(self, size, n_drivers, n_restaurants, seed=1, even_demand_distr=True, demand_distr=None,
                  time_horizon=100):
         self.seed0 = seed
+        random.seed(self.seed0)
+        np.random.seed(self.seed0)
+        self.seed(self.seed0)
         # initialize the city map
         self.time = 0
         self.time_horizon = time_horizon
@@ -327,11 +353,10 @@ class City(gym.Env):
             (self.width, self.height))  # for now, we assume the demand origin is stationary
         self.new_available_map = np.zeros((time_horizon, self.width, self.height))
         # driver map is the number of availabe drivers at each location
-        self.capacity_profile = [MAX_CAP, MAX_CAP - 1, MAX_CAP - 2]
+        self.capacity_profile = [MAX_CAP, MAX_CAP, MAX_CAP]
         self.speed_profile = [0.5, 0.5, 0.5]
         # initialize drivers, restaurants and demand(home)
         self.state = []
-        self.seed(self.seed0)
         for i in range(n_drivers):
             def dist_func(x, y):
                 return self.travel_time(x, y, self.drivers[i].driver_features)
