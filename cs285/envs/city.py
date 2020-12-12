@@ -153,9 +153,10 @@ class Driver:
         # TODO: change reward weight here in experiments
         # assert delta_tn>=-EPS
         if is_lost_order and self.order_to_pick.fee > EPS:
-            return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + fee - 1.1 * lost_order_fee  # if we give up the current pickup order, we will have extra penalty
+            return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + 10 * (
+                        fee - lost_order_fee)  # if we give up the current pickup order, we will have extra penalty
         else:
-            return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + fee
+            return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + 10 * fee
 
     def agent_observe(self, dist_func):
         """
@@ -274,9 +275,9 @@ class Driver:
             c_tn = dist_func((self.x, self.y), (x0, y0))
 
         reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee)
-        if zeta == 1 and self.capacity < 1:
-            reward = -1000
-            # print('impossible movement')
+        # if zeta == 1 and self.capacity<1:
+        # reward = -1
+        # print('impossible movement')
         return reward, is_lost_order, lost_order
 
     def add_to_candidate(self, new_order_candidate):
