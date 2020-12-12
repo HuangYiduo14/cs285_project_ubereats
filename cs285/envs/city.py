@@ -151,8 +151,9 @@ class Driver:
 
     def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee):
         # TODO: change reward weight here in experiments
+        # assert delta_tn>=-EPS
         if is_lost_order and self.order_to_pick.fee > EPS:
-            return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + fee - BIG_NUM  # if we give up the current pickup order, we will have extra penalty
+            return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + fee - 1.1 * lost_order_fee  # if we give up the current pickup order, we will have extra penalty
         else:
             return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + fee
 
@@ -261,14 +262,20 @@ class Driver:
                     dt = self.traj_time[i + 1] - self.order_onboard[
                         o].expected_drop_time  # the first traj time on the path is a pickup point
                     self.order_onboard[o].expected_drop_time = self.traj_time[i + 1]
-                    delta_tn += dt
+                elif o == len(self.order_onboard):
+                    dt = self.traj_time[i + 1] - self.time - dist_func((self.x, self.y),
+                                                                       self.order_candidate.ori) - dist_func(
+                        self.order_candidate.ori, self.order_candidate.dest)
+                    # print('dt',dt)
+                    self.order_candidate.expected_drop_time = self.traj_time[i + 1]
+                delta_tn += dt
             self.next_is_drop = False
             self.order_to_pick = self.order_candidate
             c_tn = dist_func((self.x, self.y), (x0, y0))
 
         reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee)
         if zeta == 1 and self.capacity < 1:
-            reward = -BIG_NUM
+            reward = -1000
             # print('impossible movement')
         return reward, is_lost_order, lost_order
 
@@ -353,7 +360,7 @@ class City(gym.Env):
         self.new_available_map = np.zeros((time_horizon, self.width, self.height))
         # driver map is the number of availabe drivers at each location
         self.capacity_profile = [MAX_CAP, MAX_CAP, MAX_CAP]
-        self.speed_profile = [0.5, 0.5, 0.5]
+        self.speed_profile = [0.05, 0.05, 0.05]
         self.num_lost_orders = 0
         self.num_impossible_move = 0
         # initialize drivers, restaurants and demand(home)
@@ -374,10 +381,12 @@ class City(gym.Env):
 
         self.restaurants = [
             Restaurant(round(np.random.rand() * self.width / 2.), round(np.random.rand() * self.height / 2.),
-                       np.random.rand() / 2. + 0.5) for _ in range(n_restaurants)]
+                       0.1 * (np.random.rand() / 2. + 0.5)) for _ in range(n_restaurants)]
 
         for restaurant in self.restaurants:
+            print('restaurant', restaurant.x, restaurant.y, restaurant.attractiveness)
             self.demand_expectation[restaurant.x, restaurant.y] += restaurant.attractiveness
+
         if even_demand_distr:
             self.demand_dest_distr = {(x, y): 1 / self.width / self.height for x in range(self.width) for y in
                                       range(self.height)}
@@ -566,7 +575,7 @@ class City(gym.Env):
         self.order_buffer = [order for order in self.order_buffer if order.pickup_ddl > self.time]
         self.time += 1
         self.state = observations
-        if self.time % 100 == 0:
+        if self.time % 5000 == 0:
             print('impossible move:', self.num_impossible_move)
             print('lost orders:', self.num_lost_orders)
 
