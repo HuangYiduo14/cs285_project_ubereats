@@ -434,7 +434,7 @@ class City(gym.Env):
         self.all_orders = []
 
         # initialize action space
-        self.action_space = gym.spaces.Tuple((gym.spaces.Discrete(MAX_CAND_NUM) for _ in range(self.n_drivers)))
+        self.action_space = gym.spaces.Tuple((gym.spaces.Discrete(1+MAX_CAND_NUM) for _ in range(self.n_drivers)))
         obs_lb_one_driver = [0, 0, 0, 0] + [0 for _ in range(2 * MAX_CAP)] + \
                             [0, 0, 0, 0, 0] + [0, 0, 0, 0, 0]
         obs_ub_one_driver = [10, 10, 1, MAX_CAP] + [10 for _ in range(2 * MAX_CAP)] + \
