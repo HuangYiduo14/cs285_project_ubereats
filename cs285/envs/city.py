@@ -1,7 +1,7 @@
 import numpy as np
 import pdb
 from random import shuffle, choices
-from cs285.infrastructure.tsp_utils import shortest_ham_path, solve_tsp_dynamic_programming
+from cs285.infrastructure.tsp_utils import solve_tsp_dynamic_programming
 import math
 import itertools
 import gym
@@ -123,8 +123,7 @@ class Driver:
         assert self.capacity >= 0
         # TODO: delete print function
         # print('time:',self.time)
-        print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y,
-                                                                             new_order.dest))
+        # print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y, new_order.dest))
         new_order.is_picked = True
         new_order.picked_time = self.time
         self.next_is_drop = True
@@ -139,9 +138,7 @@ class Driver:
         assert self.capacity <= self.max_capacity
         # TODO: delete print function
         # print('time:',self.time)
-        print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id,
-                                                                    self.order_onboard[self.next_order_ind].index,
-                                                                    self.x, self.y))
+        # print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind].index, self.x, self.y))
         order_dropped = self.order_onboard.pop(self.next_order_ind)
         self.order_drop_sequence = self.order_drop_sequence[1:]
         self.order_drop_sequence = [i if i < self.next_order_ind else i - 1 for i in self.order_drop_sequence]
@@ -155,9 +152,9 @@ class Driver:
     def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee):
         # TODO: change reward weight here in experiments
         if is_lost_order and self.order_to_pick.fee > EPS:
-            return b_tn - .0001 * c_tn - .85 * delta_tn + 50 * fee - 50 * lost_order_fee  # if we give up the current pickup order, we will have extra penalty
+            return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + fee - BIG_NUM  # if we give up the current pickup order, we will have extra penalty
         else:
-            return b_tn - .0001 * c_tn - .85 * delta_tn + 50 * fee
+            return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + fee
 
     def agent_observe(self, dist_func):
         """
@@ -234,6 +231,7 @@ class Driver:
         delta_tn = 0
         lost_order = None
         lost_order_fee = 0
+
         if zeta == 1 and self.capacity >= 1:
             fee = self.order_candidate.fee
             # print('DISPATCH: driver {0} goes to {1},{2} from {3},{4}'.format(self.id, x0, y0, self.x,self.y))
@@ -270,7 +268,8 @@ class Driver:
 
         reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee)
         if zeta == 1 and self.capacity < 1:
-            reward = -BIG_NUM // 10000
+            reward = -BIG_NUM
+            # print('impossible movement')
         return reward, is_lost_order, lost_order
 
     def add_to_candidate(self, new_order_candidate):
@@ -355,6 +354,8 @@ class City(gym.Env):
         # driver map is the number of availabe drivers at each location
         self.capacity_profile = [MAX_CAP, MAX_CAP, MAX_CAP]
         self.speed_profile = [0.5, 0.5, 0.5]
+        self.num_lost_orders = 0
+        self.num_impossible_move = 0
         # initialize drivers, restaurants and demand(home)
         self.state = []
         for i in range(n_drivers):
@@ -442,7 +443,7 @@ class City(gym.Env):
         return travel_cost
 
     def fee(self, expected_delivery_time):
-        fee = 2 * expected_delivery_time + 3 + 10 * np.random.rand()
+        fee = 2 * expected_delivery_time + 3
         return fee
 
     def late_penalty(self, late_time, fee):
@@ -542,6 +543,10 @@ class City(gym.Env):
 
             zeta_i = actions[i]
             this_reward, is_lost_order, lost_order = self.drivers[i].take_action(zeta_i, dist_func)
+            if is_lost_order:
+                self.num_lost_orders += 1
+            if zeta_i == 1 and self.drivers[i].capacity < 1:
+                self.num_impossible_move += 1
             if zeta_i == 1 and self.drivers[i].capacity >= 1:
                 order_i = self.drivers[i].order_to_pick
                 if order_i.fee > EPS:
@@ -561,4 +566,8 @@ class City(gym.Env):
         self.order_buffer = [order for order in self.order_buffer if order.pickup_ddl > self.time]
         self.time += 1
         self.state = observations
+        if self.time % 100 == 0:
+            print('impossible move:', self.num_impossible_move)
+            print('lost orders:', self.num_lost_orders)
+
         return np.array(observations), np.sum(rewards), done[0], info
