@@ -58,6 +58,7 @@ class Driver:
         self.order_onboard = []  # list of Order
         self.order_drop_sequence = []  # list of index in order, order_drop_sequence[0] will be dropped first
         self.next_order_ind = BIG_NUM  # =order_drop_sequence[0]
+        self.pend_order_dt = 0
         self.order_to_pick = None  # an Order object
         self.order_candidate = Order([self.x, self.y], [self.x, self.y], BIG_NUM, BIG_NUM, 0,
                                      BIG_NUM)  # an Order object
@@ -129,6 +130,7 @@ class Driver:
         self.next_is_drop = True
         self.order_onboard.append(new_order)
         self.order_to_pick = None
+        self.pend_order_dt = 0
         # self.order_to_pick_fee = 0
 
     def drop_order(self):
@@ -149,11 +151,11 @@ class Driver:
             self.next_is_drop = False
         return order_dropped
 
-    def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee):
+    def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee, old_pend_order_dt):
         # TODO: change reward weight here in experiments
         # assert delta_tn>=-EPS
         if is_lost_order and self.order_to_pick.fee > EPS:
-            return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + 10 * (
+            return 0.01 * b_tn - .0001 * c_tn - .85 * (delta_tn - old_pend_order_dt) + 10 * (
                         fee - lost_order_fee)  # if we give up the current pickup order, we will have extra penalty
         else:
             return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + 10 * fee
@@ -234,6 +236,7 @@ class Driver:
         lost_order = None
         lost_order_fee = 0
 
+        old_pend_order_dt = self.pend_order_dt
         if zeta == 1 and self.capacity >= 1:
             fee = self.order_candidate.fee
             # print('DISPATCH: driver {0} goes to {1},{2} from {3},{4}'.format(self.id, x0, y0, self.x,self.y))
@@ -264,17 +267,18 @@ class Driver:
                         o].expected_drop_time  # the first traj time on the path is a pickup point
                     self.order_onboard[o].expected_drop_time = self.traj_time[i + 1]
                 elif o == len(self.order_onboard):
-                    dt = self.traj_time[i + 1] - self.time - dist_func((self.x, self.y),
-                                                                       self.order_candidate.ori) - dist_func(
+                    self.pend_order_dt = self.traj_time[i + 1] - self.time - dist_func((self.x, self.y),
+                                                                                       self.order_candidate.ori) - dist_func(
                         self.order_candidate.ori, self.order_candidate.dest)
                     # print('dt',dt)
+                    dt = self.pend_order_dt
                     self.order_candidate.expected_drop_time = self.traj_time[i + 1]
                 delta_tn += dt
             self.next_is_drop = False
             self.order_to_pick = self.order_candidate
             c_tn = dist_func((self.x, self.y), (x0, y0))
 
-        reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee)
+        reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee, old_pend_order_dt)
         # if zeta == 1 and self.capacity<1:
         # reward = -1
         # print('impossible movement')
