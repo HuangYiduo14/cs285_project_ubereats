@@ -626,4 +626,4 @@ class City(gym.Env):
             print('lost orders:', self.num_lost_orders)
         info = {'picked_fee':self.order_picked_val, 'dropped_fee':self.order_droped_val, 'pending_income':self.order_pend_val,
                 'lost_fee':self.order_lost_val, 'num_lost_orders':self.num_lost_orders, 'num_impossible_move': self.num_impossible_move}
-        return np.array(observations), np.array(rewards), done[0], info
+        return observations, rewards, done[0], info
