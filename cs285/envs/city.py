@@ -12,7 +12,9 @@ import random
 BIG_NUM = 99999999
 EPS = 1e-12
 SEARCH_RADIUS = 3
+DROP_PICK_RADIUS = EPS*10
 MAX_ORDER_BUFFER = 50
+MAX_CAND_NUM = 5
 MAX_CAP = 4
 
 
@@ -60,8 +62,8 @@ class Driver:
         self.next_order_ind = BIG_NUM  # =order_drop_sequence[0]
         self.pend_order_dt = 0
         self.order_to_pick = None  # an Order object
-        self.order_candidate = Order([self.x, self.y], [self.x, self.y], BIG_NUM, BIG_NUM, 0,
-                                     BIG_NUM)  # an Order object
+        self.order_candidates = [Order([self.x, self.y], [self.x, self.y], BIG_NUM, BIG_NUM, 0,
+                                       BIG_NUM) for _ in range(MAX_CAND_NUM)]  # lists of Order objects
 
     def shp_traj(self, location_list, dist_func, start_from_current=True):
 
@@ -97,7 +99,7 @@ class Driver:
 
         if start_from_current:
             ind_trajectory = shp_result[1:]
-            ind_trajectory = [i - 1 for i in ind_trajectory]
+            ind_trajectory = [i - 1 for i in ind_trajectory]  # first point is the current location, ignored
             trajectory = [location_list[i] for i in ind_trajectory]
             travel_time = [dist[int(shp_result[i]), int(shp_result[i + 1])] for i in range(n - 1)]
             travel_time = np.cumsum(travel_time)
@@ -116,15 +118,14 @@ class Driver:
         return trajectory, ind_trajectory, arrival_time
 
     def pickup_order(self, new_order):
-        assert round(self.x) == round(new_order.ori[0])
-        assert round(self.y) == round(new_order.ori[1])
+        assert abs(self.x - new_order.ori[0]) + abs(self.y - new_order.ori[1]) < DROP_PICK_RADIUS
         if new_order.fee < EPS:
             return
         self.capacity -= 1
         assert self.capacity >= 0
         # TODO: delete print function
-        # print('time:',self.time)
-        # print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y, new_order.dest))
+        print('time:',self.time)
+        print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y, new_order.dest))
         new_order.is_picked = True
         new_order.picked_time = self.time
         self.next_is_drop = True
@@ -134,13 +135,13 @@ class Driver:
         # self.order_to_pick_fee = 0
 
     def drop_order(self):
-        assert round(self.x) == round(self.order_onboard[self.next_order_ind].dest[0])
-        assert round(self.y) == round(self.order_onboard[self.next_order_ind].dest[1])
+        assert abs(self.x - self.order_onboard[self.next_order_ind].dest[0]) + \
+               abs(self.y - self.order_onboard[self.next_order_ind].dest[1]) < DROP_PICK_RADIUS
         self.capacity += 1
         assert self.capacity <= self.max_capacity
         # TODO: delete print function
-        # print('time:',self.time)
-        # print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind].index, self.x, self.y))
+        print('time:',self.time)
+        print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind].index, self.x, self.y))
         order_dropped = self.order_onboard.pop(self.next_order_ind)
         self.order_drop_sequence = self.order_drop_sequence[1:]
         self.order_drop_sequence = [i if i < self.next_order_ind else i - 1 for i in self.order_drop_sequence]
@@ -155,10 +156,10 @@ class Driver:
         # TODO: change reward weight here in experiments
         # assert delta_tn>=-EPS
         if is_lost_order and self.order_to_pick.fee > EPS:
-            return 0.01 * b_tn - .0001 * c_tn - .85 * (delta_tn - old_pend_order_dt) + 10 * (
-                        fee - lost_order_fee)  # if we give up the current pickup order, we will have extra penalty
+            return 0.01 * b_tn - .0001 * c_tn - .85 * (delta_tn - old_pend_order_dt) + 1.0 * (
+                    fee - lost_order_fee)  # if we give up the current pickup order, we will have extra penalty
         else:
-            return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + 10 * fee
+            return 0.01 * b_tn - .0001 * c_tn - .85 * delta_tn + 1.0 * fee
 
     def agent_observe(self, dist_func):
         """
@@ -170,7 +171,9 @@ class Driver:
         ...
         trajectory_xm, trajectory_ym,                               # kappa_t^i
         order_to_pick: ori_x, ori_y, dest_x, dest_y, fee
-        order_candidate: ori_x, ori_y, dest_x, dest_y, fee
+        order_candidate 1: ori_x, ori_y, dest_x, dest_y, fee
+        ...
+        order_candidate MAX_CAND_ORDER: ori_x, ori_y, dest_x, dest_y, fee
         ]
         m = MAX_CAP
         """
@@ -206,28 +209,32 @@ class Driver:
             ]
         else:
             order_to_pick_info = [self.x, self.y, self.x, self.y, 0]
-        if self.order_candidate:
-            order_candidate_info = [
-                self.order_candidate.ori[0], self.order_candidate.ori[1],
-                self.order_candidate.dest[0], self.order_candidate.dest[1],
-                self.order_candidate.fee
-            ]
+
+        order_candidates_info = []
+        for i in range(MAX_CAND_NUM):
+            if self.order_candidates[i]:
+                order_candidates_info += [
+                    self.order_candidates[i].ori[0], self.order_candidates[i].ori[1],
+                    self.order_candidates[i].dest[0], self.order_candidates[i].dest[1],
+                    self.order_candidates[i].fee
+                ]
         else:
-            order_candidate_info = [self.x, self.y, self.x, self.y, 0]
+            order_candidates_info += [self.x, self.y, self.x, self.y, 0]
 
         return [self.x, self.y,
                 self.driver_features['speed'], self.capacity] \
-               + order_space_time_traj + order_to_pick_info + order_candidate_info
+               + order_space_time_traj + order_to_pick_info + order_candidates_info
 
-    def take_action(self, zeta, dist_func):
+    def take_action(self, action, dist_func):
         """
         :param action:
-        zeta = 1 if we will pick (potential) new passengers from order_candidate, =0 otherwise
+        action = 0: we will not pick new orders
+        action = 1: we will pick self.order_candidate[0]
+        ...
+        action = MAX_CAND_NUM: we will pick self.order_candidate[MAX_CAND_NUM-1]
         :return: reward for one driver and new space-time trajectory
         b_tn, c_tn and delta_tn: see DeepPool (7)
         """
-        x0, y0 = self.order_candidate.ori
-        x1, y1 = self.order_candidate.dest
         fee = 0
         is_lost_order = False
         b_tn = len(self.order_onboard)
@@ -235,10 +242,13 @@ class Driver:
         delta_tn = 0
         lost_order = None
         lost_order_fee = 0
-
         old_pend_order_dt = self.pend_order_dt
-        if zeta == 1 and self.capacity >= 1:
-            fee = self.order_candidate.fee
+
+        if action >= 1 and self.capacity >= 1:
+            this_order = self.order_candidates[action - 1]
+            x0, y0 = this_order.ori
+            x1, y1 = this_order.dest
+            fee = this_order.fee
             # print('DISPATCH: driver {0} goes to {1},{2} from {3},{4}'.format(self.id, x0, y0, self.x,self.y))
             order_locations = [order.dest for order in
                                self.order_onboard]  # noting here we only consider orders on board
@@ -247,45 +257,52 @@ class Driver:
             else:
                 location_list = [(x0, y0)] + order_locations  # case 2: we only know the origin of the new order
             trajectory, ind_trajectory, arrival_time = self.shp_traj(location_list, dist_func, start_from_current=False)
-            self.order_drop_sequence = [i - 1 for i in ind_trajectory if i >= 1]
+            self.order_drop_sequence = [i - 1 for i in ind_trajectory if
+                                        i >= 1]  # the first point is a pickup point so we ignore it
             self.trajectory = trajectory
             self.traj_time = arrival_time
             if len(self.order_drop_sequence) > 0:
                 self.next_order_ind = self.order_drop_sequence[0]
             else:
                 self.next_order_ind = -1
-            if (
-                    not self.next_is_drop) and self.order_to_pick:  # if the car is going to pick an order when dispatched to new area, unpicked order will be lost
+            if (not self.next_is_drop) and (self.order_to_pick) and (self.order_to_pick.fee > EPS):
+                # if the car is going to pick an order when dispatched to new area, unpicked order will be lost
                 is_lost_order = True
                 lost_order = self.order_to_pick
                 lost_order_fee = lost_order.fee
             # calculate the difference in time
             delta_tn = 0
             for i, o in enumerate(self.order_drop_sequence):  # i is the sequence while o is the index in order list
+                dt = 0
                 if o <= len(self.order_onboard) - 1:
                     dt = self.traj_time[i + 1] - self.order_onboard[
                         o].expected_drop_time  # the first traj time on the path is a pickup point
                     self.order_onboard[o].expected_drop_time = self.traj_time[i + 1]
                 elif o == len(self.order_onboard):
-                    self.pend_order_dt = self.traj_time[i + 1] - self.time - dist_func((self.x, self.y),
-                                                                                       self.order_candidate.ori) - dist_func(
-                        self.order_candidate.ori, self.order_candidate.dest)
+                    if is_lost_order:
+                        self.pend_order_dt = self.traj_time[i + 1] - self.time \
+                                             - dist_func((self.x, self.y), this_order.ori) \
+                                             - dist_func(this_order.ori, this_order.dest)
+                    else:
+                        self.pend_order_dt = 0
                     # print('dt',dt)
                     dt = self.pend_order_dt
-                    self.order_candidate.expected_drop_time = self.traj_time[i + 1]
+                    this_order.expected_drop_time = self.traj_time[i + 1]
+                else:
+                    assert False
                 delta_tn += dt
             self.next_is_drop = False
-            self.order_to_pick = self.order_candidate
+            self.order_to_pick = this_order
             c_tn = dist_func((self.x, self.y), (x0, y0))
 
         reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee, old_pend_order_dt)
-        # if zeta == 1 and self.capacity<1:
-        # reward = -1
+        if action >= 1 and self.capacity<1:
+           reward = -1
         # print('impossible movement')
         return reward, is_lost_order, lost_order
 
-    def add_to_candidate(self, new_order_candidate):
-        self.order_candidate = new_order_candidate
+    def add_to_candidate(self, new_order_candidates):
+        self.order_candidates = new_order_candidates
 
     def move_one_step(self):
         # move the vehicle in one time step according to its current_orders, shp trajectory and current location
@@ -319,27 +336,33 @@ class Driver:
         # print some informations
         # TODO: delete these lines
         # print('dx dy', dx, dy)
-        # print('dxy', dxy)
-        # print('driver {0} moved to {1},{2}'.format(self.id, self.x, self.y))
-        # print('new traj', self.trajectory)
-        # print('new traj_time', self.traj_time)
-        # print('new order sequence', self.order_drop_sequence)
-        # print('orders on board', [order.index for order in self.order_onboard])
-        # if self.order_to_pick:
-        # print('order to pick', self.order_to_pick.ori, self.order_to_pick.dest)
+        if abs(self.x - round(self.x))+ abs(self.y-round(self.y))<EPS:
+            print('time:',self.time)
+            print('dxy', dxy)
+            print('driver {0} moved to {1},{2}'.format(self.id, self.x, self.y))
+            print('new traj', self.trajectory)
+            print('new traj_time', self.traj_time)
+            print('new order sequence', self.order_drop_sequence)
+            print('orders on board', [order.index for order in self.order_onboard])
+            if self.order_to_pick:
+                print('order to pick', self.order_to_pick.ori, self.order_to_pick.dest)
+        picked_order_val, drop_order_val = 0,0
         while True:
             # check all possible points along the trajectory that can be picked or droped
-            if len(self.trajectory) > 0 and abs(round(self.x) - round(self.trajectory[0][0])) < EPS and abs(
-                    round(self.y) - round(self.trajectory[0][1])) < EPS:
+            if len(self.trajectory) > 0 and (
+                    abs(self.x - self.trajectory[0][0]) + abs(self.y - self.trajectory[0][1]) < DROP_PICK_RADIUS):
                 self.trajectory = self.trajectory[1:]
                 self.traj_time = self.traj_time[1:]
                 if not self.next_is_drop:
+                    picked_order_val += self.order_to_pick.fee
                     self.pickup_order(self.order_to_pick)
+
                 else:
-                    self.drop_order()
+                    order_dropped = self.drop_order()
+                    drop_order_val += order_dropped.fee
             else:
                 break
-        return self.x, self.y
+        return picked_order_val, drop_order_val
 
 
 class City(gym.Env):
@@ -366,8 +389,15 @@ class City(gym.Env):
         # driver map is the number of availabe drivers at each location
         self.capacity_profile = [MAX_CAP, MAX_CAP, MAX_CAP]
         self.speed_profile = [0.05, 0.05, 0.05]
+
+        # information
         self.num_lost_orders = 0
         self.num_impossible_move = 0
+        self.order_droped_val = 0
+        self.order_picked_val = 0
+        self.order_lost_val = 0
+        self.order_pend_val = 0
+
         # initialize drivers, restaurants and demand(home)
         self.state = []
         for i in range(n_drivers):
@@ -385,8 +415,9 @@ class City(gym.Env):
             self.state += self.drivers[i].agent_observe(dist_func)
 
         self.restaurants = [
-            Restaurant(round(np.random.rand() * self.width / 2.), round(np.random.rand() * self.height / 2.),
-                       0.1 * (np.random.rand() / 2. + 0.5)) for _ in range(n_restaurants)]
+            Restaurant(round(np.random.rand() * self.width /2 + self.width/2), round(np.random.rand() * self.height),
+                       0.1 * (np.random.rand() / 2. + 0.5)) for _ in range(n_restaurants-1)]
+        self.restaurants.append(Restaurant(0,0,0.1 * (np.random.rand() / 2. + 0.5)))
 
         for restaurant in self.restaurants:
             print('restaurant', restaurant.x, restaurant.y, restaurant.attractiveness)
@@ -403,19 +434,15 @@ class City(gym.Env):
         self.all_orders = []
 
         # initialize action space
-        self.action_space = gym.spaces.MultiBinary(self.n_drivers)
+        self.action_space = gym.spaces.Tuple((gym.spaces.Discrete(MAX_CAND_NUM) for _ in range(self.n_drivers)))
         obs_lb_one_driver = [0, 0, 0, 0] + [0 for _ in range(2 * MAX_CAP)] + \
                             [0, 0, 0, 0, 0] + [0, 0, 0, 0, 0]
         obs_ub_one_driver = [10, 10, 1, MAX_CAP] + [10 for _ in range(2 * MAX_CAP)] + \
                             [10, 10, 10, 10, BIG_NUM] + [10, 10, 10, 10, BIG_NUM]
+        self.observation_space = gym.spaces.Tuple(
+            (gym.spaces.Box(low=np.array(obs_lb_one_driver), high=np.array(obs_ub_one_driver)) for _ in
+             range(self.n_drivers)))
 
-        low_vect = []
-        high_vect = []
-        # print('observation space:',self.observation_space)
-        for _ in range(self.n_drivers):
-            low_vect += copy.deepcopy(obs_lb_one_driver)
-            high_vect += copy.deepcopy(obs_ub_one_driver)
-        self.observation_space = gym.spaces.Box(low=np.array(low_vect), high=np.array(high_vect))
         self.state = np.array(self.state)
 
         """
@@ -503,10 +530,10 @@ class City(gym.Env):
         return new_orders
 
     def step(self, actions):
-        # action: list of actions for each driver
-        # e.g. [0,1,0,1,...]
+        # actions: list of actions for each driver
+        # e.g. [0,1,2,1,...]
         self.order_generate()
-        # print('time:', self.time, '=' * 30)
+        #print('time:', self.time, '=' * 30)
         rewards = []
         observations = []
         done = []
@@ -520,32 +547,41 @@ class City(gym.Env):
                 return self.travel_time(x, y, self.drivers[i].driver_features)
 
             ##############################################################
-            # randomly assign a new order to each driver
+            # randomly assign new orders to each driver
             ##############################################################
 
-            new_order_found = False
+            num_orders_found = 0
+            candidate_orders = []
             for search_mult in range(1, 1 + dist_func([0, 0], [10, 10]) // SEARCH_RADIUS):
                 # gradully increase the search radius
-                if new_order_found:
+                if num_orders_found >= MAX_CAND_NUM:
                     break
                 current_xy = [self.drivers[i].x, self.drivers[i].y]
-                candidate_orders = [order for order in self.order_buffer if
+                potential_orders = [order for order in self.order_buffer if
                                     search_mult * SEARCH_RADIUS >= dist_func(order.ori, current_xy) >= (
-                                                search_mult - 1) * SEARCH_RADIUS]
-                shuffle(candidate_orders)
+                                            search_mult - 1) * SEARCH_RADIUS]
+                shuffle(potential_orders)
                 #    pdb.set_trace()
-                for cand_order in candidate_orders:
+                for cand_order in potential_orders:
                     if cand_order not in order_candidate_selected:
-                        self.drivers[i].add_to_candidate(cand_order)
+                        # to avoid conflicts, we will only assing one order to one driver
+                        candidate_orders.append(cand_order)
                         order_candidate_selected.append(cand_order)
-                        new_order_found = True
-                        break
-            # if no new order available, assign a re-dispatch order
-            if not new_order_found:
+                        num_orders_found += 1
+                        if num_orders_found >= MAX_CAND_NUM:
+                            break
+            # if no new order available, assign re-dispatch orders
+            if num_orders_found < MAX_CAND_NUM:
                 # print('Fake order assigned')
-                dispatched_loc = choices(restaurant_loc_list, restaurant_attractive_list)
-                dispatched_loc = dispatched_loc[0]
-                self.drivers[i].add_to_candidate(Order(dispatched_loc, dispatched_loc, self.time, BIG_NUM, 0, BIG_NUM))
+                while num_orders_found < MAX_CAND_NUM:
+                    dispatched_loc = choices(restaurant_loc_list, restaurant_attractive_list)
+                    dispatched_loc = dispatched_loc[0]
+                    if abs(dispatched_loc[0] - self.drivers[i].x) + abs(
+                            dispatched_loc[1] - self.drivers[i].y) > DROP_PICK_RADIUS:
+                        candidate_orders.append(Order(dispatched_loc, dispatched_loc, self.time, BIG_NUM, 0, BIG_NUM))
+                        num_orders_found += 1
+            assert len(candidate_orders) == MAX_CAND_NUM
+            self.drivers[i].add_to_candidate(candidate_orders)
 
             ###########################################################
             # take action
@@ -553,35 +589,41 @@ class City(gym.Env):
 
             # observe what happens before taking action
             # observations.append(self.drivers[i].agent_observe(dist_func))
-            observations += self.drivers[i].agent_observe(dist_func)
+            observations.append(self.drivers[i].agent_observe(dist_func))
 
-            zeta_i = actions[i]
-            this_reward, is_lost_order, lost_order = self.drivers[i].take_action(zeta_i, dist_func)
+            action_i = actions[i]
+            this_reward, is_lost_order, lost_order = self.drivers[i].take_action(action_i, dist_func)
             if is_lost_order:
                 self.num_lost_orders += 1
-            if zeta_i == 1 and self.drivers[i].capacity < 1:
+            if action_i >= 1 and self.drivers[i].capacity < 1:
                 self.num_impossible_move += 1
-            if zeta_i == 1 and self.drivers[i].capacity >= 1:
+            if action_i >= 1 and self.drivers[i].capacity >= 1:
                 order_i = self.drivers[i].order_to_pick
                 if order_i.fee > EPS:
-                    self.order_buffer.remove(order_i)
+                    self.order_buffer.remove(order_i) # remove picked order from city buffer
+                    self.order_pend_val += order_i.fee
                 # print('driver {0} will take order {1},{2} -> {3},{4}'.format(i, order_i.ori[0], order_i.ori[1], order_i.dest[0], order_i.dest[1]))
+
                 if is_lost_order and lost_order.fee > EPS:  # if order is given up
-                    self.order_buffer.append(lost_order)  # return the order to buffer
+                    self.order_buffer.append(lost_order)  # return the order to city buffer
+                    self.order_lost_val += lost_order.fee
             rewards.append(this_reward)
 
             #################################################################
             # move one step and decide pickup/drop orders
             #################################################################
-            self.drivers[i].move_one_step()
+            picked_order_val, drop_order_val = self.drivers[i].move_one_step()
+            self.order_picked_val += picked_order_val
+            self.order_droped_val += drop_order_val
 
             done.append(False)
-            # if an other has not been picked up, delete it from buffer
+        # if an other has not been picked up after ddl, delete it from buffer
         self.order_buffer = [order for order in self.order_buffer if order.pickup_ddl > self.time]
         self.time += 1
         self.state = observations
         if self.time % 5000 == 0:
             print('impossible move:', self.num_impossible_move)
             print('lost orders:', self.num_lost_orders)
-
-        return np.array(observations), np.sum(rewards), done[0], info
+        info = {'picked_fee':self.order_picked_val, 'dropped_fee':self.order_droped_val, 'pending_income':self.order_pend_val,
+                'lost_fee':self.order_lost_val, 'num_lost_orders':self.num_lost_orders, 'num_impossible_move': self.num_impossible_move}
+        return np.array(observations), np.array(rewards), done[0], info

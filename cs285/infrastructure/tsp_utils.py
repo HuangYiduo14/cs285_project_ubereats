@@ -15,7 +15,7 @@ import numpy as np
 def solve_tsp_dynamic_programming(
     distance_matrix: np.ndarray,
     maxsize: Optional[int] = None
-) -> Tuple[List, float]:
+) -> Tuple[float,List]:
     """
     Copy from https://github.com/fillipe-gsm/python-tsp.git
     Solve TSP to optimality with dynamic programming.
