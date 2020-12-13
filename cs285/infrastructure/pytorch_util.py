@@ -72,7 +72,11 @@ def set_device(gpu_id):
 
 
 def from_numpy(*args, **kwargs):
-    return torch.from_numpy(*args, **kwargs).float().to(device)
+    if 'is_int' in kwargs.keys():
+        kwargs.pop('is_int',None)
+        return torch.from_numpy(*args, **kwargs).long().to(device)
+    else:
+        return torch.from_numpy(*args, **kwargs).float().to(device)
 
 
 def to_numpy(tensor):

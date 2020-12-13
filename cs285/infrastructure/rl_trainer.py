@@ -91,6 +91,7 @@ class RL_Trainer(object):
         #ob_dim = self.env.observation_space.shape[0]
         #ac_dim = self.env.action_space.shape[0]
 
+        self.params['agent_params']['n_drivers'] = self.params['n_drivers']
         self.params['agent_params']['ac_dim'] = self.params['n_drivers']
         self.params['agent_params']['ob_dim'] = (self.params['n_drivers'],(3+2*MAX_CAP+5+5*MAX_CAND_NUM))
 

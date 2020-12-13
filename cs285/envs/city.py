@@ -124,8 +124,8 @@ class Driver:
         self.capacity -= 1
         assert self.capacity >= 0
         # TODO: delete print function
-        print('time:',self.time)
-        print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y, new_order.dest))
+        #print('time:',self.time)
+        #print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y, new_order.dest))
         new_order.is_picked = True
         new_order.picked_time = self.time
         self.next_is_drop = True
@@ -140,8 +140,8 @@ class Driver:
         self.capacity += 1
         assert self.capacity <= self.max_capacity
         # TODO: delete print function
-        print('time:',self.time)
-        print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind].index, self.x, self.y))
+        #print('time:',self.time)
+        #print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind].index, self.x, self.y))
         order_dropped = self.order_onboard.pop(self.next_order_ind)
         self.order_drop_sequence = self.order_drop_sequence[1:]
         self.order_drop_sequence = [i if i < self.next_order_ind else i - 1 for i in self.order_drop_sequence]
@@ -334,16 +334,16 @@ class Driver:
         # print some informations
         # TODO: delete these lines
         # print('dx dy', dx, dy)
-        if abs(self.x - round(self.x))+ abs(self.y-round(self.y))<EPS:
-            print('time:',self.time)
-            print('dxy', dxy)
-            print('driver {0} moved to {1},{2}'.format(self.id, self.x, self.y))
-            print('new traj', self.trajectory)
-            print('new traj_time', self.traj_time)
-            print('new order sequence', self.order_drop_sequence)
-            print('orders on board', [order.index for order in self.order_onboard])
-            if self.order_to_pick:
-                print('order to pick', self.order_to_pick.ori, self.order_to_pick.dest)
+        #if abs(self.x - round(self.x))+ abs(self.y-round(self.y))<EPS:
+            #print('time:',self.time)
+            #print('dxy', dxy)
+            #print('driver {0} moved to {1},{2}'.format(self.id, self.x, self.y))
+            #print('new traj', self.trajectory)
+            #print('new traj_time', self.traj_time)
+            #print('new order sequence', self.order_drop_sequence)
+            #print('orders on board', [order.index for order in self.order_onboard])
+            #if self.order_to_pick:
+                #print('order to pick', self.order_to_pick.ori, self.order_to_pick.dest)
         picked_order_val, drop_order_val = 0,0
         while True:
             # check all possible points along the trajectory that can be picked or droped
@@ -625,4 +625,4 @@ class City(gym.Env):
             print('lost orders:', self.num_lost_orders)
         info = {'picked_fee':self.order_picked_val, 'dropped_fee':self.order_droped_val, 'pending_income':self.order_pend_val,
                 'lost_fee':self.order_lost_val, 'num_lost_orders':self.num_lost_orders, 'num_impossible_move': self.num_impossible_move}
-        return observations, rewards, done[0], info
+        return np.array(observations), np.array(rewards), done[0], info

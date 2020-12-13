@@ -103,12 +103,11 @@ class MLPPolicy(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             for i in range(self.n_drivers):
                 logit_this_driver = []
                 for j in range(MAX_CAND_NUM+1):
+                    index_slice = ptu.from_numpy(np.array(list(range(self.ob_dim))
+                                         +list(range(self.ob_dim+j*self.ac_dim, self.ob_dim+(j+1)*self.ac_dim))), is_int=True)
                     logit_this_driver.append(
                         self.agent_logits_nets[i](
-                            observation[:,i,:].index_select(1,
-                            torch.tensor(list(range(self.ob_dim))
-                                         +list(range(self.ob_dim+j*self.ac_dim, self.ob_dim+(j+1)*self.ac_dim)))
-                                                        )
+                            observation[:,i,:].index_select(1,index_slice)
                         )
                     )
                     #import pdb; pdb.set_trace()
@@ -146,7 +145,7 @@ class MLPPolicyAC(MLPPolicy):
             self.agent_optimizers[i].step()
         return losses[i].item()
 
-
+"""
 import numpy as np
 ob_dim = 3+2*MAX_CAP
 ac_dim = 5
@@ -159,4 +158,5 @@ cc = aa.get_action(obs)
 adv_n = np.array([[0.01038937, 0.18045077, 0.04163878],
        [0.01038937, 0.18045075, 0.04163878]])
 aa.update(obs,cc,adv_n=adv_n)
+"""
 
