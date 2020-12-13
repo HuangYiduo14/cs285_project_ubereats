@@ -1,11 +1,13 @@
 from cs285.envs.city import *
 from cs285.policies.greedy_policy import CentralGreedyPolicy
 
-city_test = City((10, 10), n_drivers=1, n_restaurants=5)
+city_test = City((10, 10), n_drivers=1, n_restaurants=6, seed=10)
+
 re_history = []
 fee_history = []
 fee_v_history = []
-for t in range(10000):
+
+for t in range(1000):
     greedy_policy = CentralGreedyPolicy(city_test)
     actions = greedy_policy.get_action()
     obs, res, _, _ = city_test.step(actions)

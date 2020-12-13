@@ -2,6 +2,7 @@ import numpy as np
 from cs285.envs.city import MAX_CAND_NUM
 import networkx as nx
 import copy
+from random import choice
 
 
 class CentralGreedyPolicy:
@@ -27,5 +28,6 @@ class CentralGreedyPolicy:
                 #print('calculate reward for ', driver_ind, 'cand no.',i, 'reward:',new_reward,
                 #  'candidte fee',driver.order_candidates[i].fee,'od', driver.order_candidates[i].ori, driver.order_candidates[i].dest,
                 #  'id',driver.order_candidates[i].index)
-            actions.append(reward_list.index(max(reward_list)))
+            #actions.append(reward_list.index(max(reward_list)))
+            actions.append(choice(list(range(MAX_CAND_NUM+1))))
         return actions
