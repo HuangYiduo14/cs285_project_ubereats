@@ -3,7 +3,7 @@ from cs285.infrastructure.utils import *
 
 class ReplayBuffer(object):
 
-    def __init__(self, max_size=1000000):
+    def __init__(self, max_size=10000000):
 
         self.max_size = max_size
         self.paths = []

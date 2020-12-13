@@ -3,7 +3,7 @@ import pickle
 import os
 import sys
 import time
-
+import matplotlib.pyplot as plt
 import gym
 from gym import wrappers
 import numpy as np
@@ -94,7 +94,10 @@ class RL_Trainer(object):
         self.params['agent_params']['n_drivers'] = self.params['n_drivers']
         self.params['agent_params']['ac_dim'] = self.params['n_drivers']
         self.params['agent_params']['ob_dim'] = (self.params['n_drivers'],(3+2*MAX_CAP+5+5*MAX_CAND_NUM))
-
+        self.params['agent_params']['shared_exp'] = self.params['shared_exp']
+        self.params['agent_params']['shared_exp_lambda'] = self.params['shared_exp_lambda']
+        self.params['agent_params']['size_ac'] = self.params['size_ac']
+        self.params['agent_params']['size_cr'] = self.params['size_cr']
         # simulation timestep, will be used for video saving
         #if 'model' in dir(self.env):
         #    self.fps = 1/self.env.model.opt.timestep
@@ -183,6 +186,21 @@ class RL_Trainer(object):
             # log/save
             if self.logvideo or self.logmetrics:
                 # perform logging
+                map0,map1,map2 = self.agent.critic.check_map()
+                plt.figure()
+                plt.imshow(map0, cmap='hot')
+                plt.show()
+                plt.savefig('/content/cs285_f2020/homework_fall2020/hw3/data_city2/heatmap0.png')
+                plt.imshow(map1, cmap='hot')
+                plt.figure()
+                plt.show()
+                plt.savefig('/content/cs285_f2020/homework_fall2020/hw3/data_city2/heatmap1.png')
+                plt.figure()
+                plt.imshow(map2, cmap='hot')
+                plt.show()
+                plt.savefig('/content/cs285_f2020/homework_fall2020/hw3/data_city2/heatmap2.png')
+                
+                
                 print('\nBeginning logging procedure...')
                 if isinstance(self.agent, DQNAgent):
                     self.perform_dqn_logging(all_logs)
@@ -191,6 +209,8 @@ class RL_Trainer(object):
 
                 if self.params['save_params']:
                     self.agent.save('{}/agent_itr_{}.pt'.format(self.params['logdir'], itr))
+            else:
+                   self.perform_logging(itr, paths, eval_policy, train_video_paths, all_logs, False)
 
     ####################################
     ####################################
@@ -265,15 +285,16 @@ class RL_Trainer(object):
 
         self.logger.flush()
 
-    def perform_logging(self, itr, paths, eval_policy, train_video_paths, all_logs):
+    def perform_logging(self, itr, paths, eval_policy, train_video_paths, all_logs, is_eval=True):
 
         last_log = all_logs[-1]
 
         #######################
 
         # collect eval trajectories, for logging
-        print("\nCollecting data for eval...")
-        eval_paths, eval_envsteps_this_batch = utils.sample_trajectories(self.env, eval_policy, self.params['eval_batch_size'], self.params['ep_len'])
+        if is_eval:
+            print("\nCollecting data for eval...")
+            eval_paths, eval_envsteps_this_batch = utils.sample_trajectories(self.env, eval_policy, self.params['eval_batch_size'], self.params['ep_len'])
 
         # save eval rollouts as videos in tensorboard event file
         if self.logvideo and train_video_paths != None:
@@ -290,14 +311,20 @@ class RL_Trainer(object):
         #######################
 
         # save eval metrics
-        if self.logmetrics:
+        if True:
             # returns, for logging
-            train_returns = [path["reward"].sum() for path in paths]
-            eval_returns = [eval_path["reward"].sum() for eval_path in eval_paths]
-
-            # episode lengths, for logging
-            train_ep_lens = [len(path["reward"]) for path in paths]
-            eval_ep_lens = [len(eval_path["reward"]) for eval_path in eval_paths]
+            if is_eval:
+                train_returns = [path["reward"].sum() for path in paths]
+                eval_returns = [eval_path["reward"].sum() for eval_path in eval_paths]
+                # episode lengths, for logging
+                train_ep_lens = [len(path["reward"]) for path in paths]
+                eval_ep_lens = [len(eval_path["reward"]) for eval_path in eval_paths]
+            else:
+                train_returns = [path["reward"].sum() for path in paths]
+                eval_returns = train_returns
+                train_ep_lens = [len(path["reward"]) for path in paths]
+                eval_ep_lens = train_ep_lens
+            
 
             # decide what to log
             logs = OrderedDict()
@@ -312,6 +339,7 @@ class RL_Trainer(object):
             logs["Train_MaxReturn"] = np.max(train_returns)
             logs["Train_MinReturn"] = np.min(train_returns)
             logs["Train_AverageEpLen"] = np.mean(train_ep_lens)
+            logs["Impossible_Moves"] = self.env.num_impossible_move
 
             logs["Train_EnvstepsSoFar"] = self.total_envsteps
             logs["TimeSinceStart"] = time.time() - self.start_time

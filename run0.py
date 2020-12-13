@@ -12,6 +12,7 @@ for t in range(1000):
     actions = greedy_policy.get_action()
     obs, res, _, _ = city_test.step(actions)
     re_history.append(sum(res))
+
     fee_history.append(city_test.order_picked_val - city_test.order_droped_val)
     fee_v_history.append(city_test.order_pend_val - city_test.order_lost_val - city_test.order_picked_val)
 

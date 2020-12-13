@@ -12,7 +12,7 @@ import random
 BIG_NUM = 99999999
 EPS = 1e-12
 SEARCH_RADIUS = 3
-DROP_PICK_RADIUS = EPS * 10
+DROP_PICK_RADIUS = EPS*10
 MAX_ORDER_BUFFER = 150
 MAX_CAND_NUM = 10
 MAX_CAP = 1
@@ -124,8 +124,8 @@ class Driver:
         self.capacity -= 1
         assert self.capacity >= 0
         # TODO: delete print function
-        # print('time:',self.time)
-        # print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y, new_order.dest))
+        #print('time:',self.time)
+        #print('PICKUP: driver {0} picked order {1} at {2},{3} to {4}'.format(self.id, new_order.index, self.x, self.y, new_order.dest))
         new_order.is_picked = True
         new_order.picked_time = self.time
         self.next_is_drop = True
@@ -140,8 +140,8 @@ class Driver:
         self.capacity += 1
         assert self.capacity <= self.max_capacity
         # TODO: delete print function
-        # print('time:',self.time)
-        # print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind].index, self.x, self.y))
+        #print('time:',self.time)
+        #print('DROP: driver {0} droped order {1} at {2},{3}'.format(self.id, self.order_onboard[self.next_order_ind].index, self.x, self.y))
         order_dropped = self.order_onboard.pop(self.next_order_ind)
         self.order_drop_sequence = self.order_drop_sequence[1:]
         self.order_drop_sequence = [i if i < self.next_order_ind else i - 1 for i in self.order_drop_sequence]
@@ -152,16 +152,15 @@ class Driver:
             self.next_is_drop = False
         return order_dropped
 
-    def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee, old_pend_order_dt):
+    #def agent_reward(self, b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee, old_pend_order_dt):
         # TODO: change reward weight here in experiments
         # assert delta_tn>=-EPS
-        if is_lost_order and self.order_to_pick.fee > EPS:
-            return b_tn - .0001 * c_tn - 2. * (delta_tn - old_pend_order_dt) + 1. * (
-                    fee - lost_order_fee)  # if we give up the current pickup order, we will have extra penalty
-        else:
-            return b_tn - .0001 * c_tn - 2. * delta_tn + 1. * fee
-
-    # changed here
+    #    if is_lost_order and self.order_to_pick.fee > EPS:
+    #        return b_tn - .0001 * c_tn - 2. * (delta_tn - old_pend_order_dt) + 1. * (
+    #                fee - lost_order_fee)  # if we give up the current pickup order, we will have extra penalty
+    #    else:
+    #        return b_tn - .0001 * c_tn - 2. * delta_tn + 1. * fee
+ # changed here
     def agent_observe(self, dist_func):
         """
         :return: observation for this agent
@@ -221,7 +220,7 @@ class Driver:
             else:
                 order_candidates_info += [self.x, self.y, self.x, self.y, 0]
 
-        return [self.capacity, order_to_pick_info[-1], self.x, self.y] \
+        return [self.capacity ,self.x, self.y] \
                + order_space_time_traj + order_to_pick_info + order_candidates_info
 
     def take_action(self, action, dist_func):
@@ -292,13 +291,15 @@ class Driver:
                 delta_tn += dt
             self.next_is_drop = False
             self.order_to_pick = this_order
+            
             c_tn = dist_func((self.x, self.y), (x0, y0))
+        reward0 = -1 -b_tn*0.3
 
-        reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee, old_pend_order_dt)
-        if action >= 1 and self.capacity < 1:
-            reward = -1
+        #reward = self.agent_reward(b_tn, c_tn, delta_tn, fee, is_lost_order, lost_order_fee, old_pend_order_dt)
+        #if action >= 1 and self.capacity<1:
+        #   reward = -1
         # print('impossible movement')
-        return reward, is_lost_order, lost_order
+        return reward0, is_lost_order, lost_order
 
     def add_to_candidate(self, new_order_candidates):
         self.order_candidates = new_order_candidates
@@ -335,17 +336,17 @@ class Driver:
         # print some informations
         # TODO: delete these lines
         # print('dx dy', dx, dy)
-        # if abs(self.x - round(self.x))+ abs(self.y-round(self.y))<EPS:
-        # print('time:',self.time)
-        # print('dxy', dxy)
-        # print('driver {0} moved to {1},{2}'.format(self.id, self.x, self.y))
-        # print('new traj', self.trajectory)
-        # print('new traj_time', self.traj_time)
-        # print('new order sequence', self.order_drop_sequence)
-        # print('orders on board', [order.index for order in self.order_onboard])
-        # if self.order_to_pick:
-        # print('order to pick', self.order_to_pick.ori, self.order_to_pick.dest)
-        picked_order_val, drop_order_val = 0, 0
+        #if abs(self.x - round(self.x))+ abs(self.y-round(self.y))<EPS:
+            #print('time:',self.time)
+            #print('dxy', dxy)
+            #print('driver {0} moved to {1},{2}'.format(self.id, self.x, self.y))
+            #print('new traj', self.trajectory)
+            #print('new traj_time', self.traj_time)
+            #print('new order sequence', self.order_drop_sequence)
+            #print('orders on board', [order.index for order in self.order_onboard])
+            #if self.order_to_pick:
+                #print('order to pick', self.order_to_pick.ori, self.order_to_pick.dest)
+        picked_order_val, drop_order_val = 0,0
         while True:
             # check all possible points along the trajectory that can be picked or droped
             if len(self.trajectory) > 0 and (
@@ -415,13 +416,12 @@ class City(gym.Env):
             self.state.append(self.drivers[i].agent_observe(dist_func))
 
         self.restaurants = [
-            Restaurant(round(np.random.rand() * self.width / 5 + self.width / 2),
-                       round(np.random.rand() * self.height / 5 + self.height / 2),
-                       0.1 * (np.random.rand() / 2. + 0.5)) for _ in range(n_restaurants - 4)]
-        self.restaurants.append(Restaurant(0, 0, 0.1 * (np.random.rand() / 2. + 0.5)))
-        self.restaurants.append(Restaurant(0, 9, 0.1 * (np.random.rand() / 2. + 0.5)))
-        self.restaurants.append(Restaurant(9, 0, 0.1 * (np.random.rand() / 2. + 0.5)))
-        self.restaurants.append(Restaurant(9, 9, 0.1 * (np.random.rand() / 2. + 0.5)))
+            Restaurant(round(np.random.rand() * self.width /5 + self.width/2), round(np.random.rand() * self.height/5+self.height/2),
+                       0.1 * (np.random.rand() / 2. + 0.5)) for _ in range(n_restaurants-4)]
+        self.restaurants.append(Restaurant(0,0,0.1 * (np.random.rand() / 2. + 0.5)))
+        self.restaurants.append(Restaurant(0,9,0.1 * (np.random.rand() / 2. + 0.5)))
+        self.restaurants.append(Restaurant(9,0,0.1 * (np.random.rand() / 2. + 0.5)))
+        self.restaurants.append(Restaurant(9,9,0.1 * (np.random.rand() / 2. + 0.5)))
         for restaurant in self.restaurants:
             print('restaurant', restaurant.x, restaurant.y, restaurant.attractiveness)
             self.demand_expectation[restaurant.x, restaurant.y] += restaurant.attractiveness
@@ -438,14 +438,15 @@ class City(gym.Env):
 
         # initialize action space
 
-        obs_lb_one_driver = [0, 0, 0, 0] + [0 for _ in range(2 * MAX_CAP)] + \
-                            [0, 0, 0, 0, 0] + [0, 0, 0, 0, 0] * MAX_CAND_NUM
-        obs_ub_one_driver = [10000, 10, 10, 1] + [10 for _ in range(2 * MAX_CAP)] + \
-                            [10, 10, 10, 10, BIG_NUM] + [10, 10, 10, 10, BIG_NUM] * MAX_CAND_NUM
+
+        obs_lb_one_driver = [0, 0, 0] + [0 for _ in range(2 * MAX_CAP)] + \
+                            [0, 0, 0, 0, 0] + [0, 0, 0, 0, 0]*MAX_CAND_NUM
+        obs_ub_one_driver = [MAX_CAP, 10, 10] + [10 for _ in range(2 * MAX_CAP)] + \
+                            [10, 10, 10, 10, BIG_NUM] + [10, 10, 10, 10, BIG_NUM]*MAX_CAND_NUM
         self.observation_space = gym.spaces.Tuple([
             gym.spaces.Box(low=np.array(obs_lb_one_driver), high=np.array(obs_ub_one_driver)) for _ in
-            range(self.n_drivers)])
-        self.action_space = gym.spaces.Tuple([gym.spaces.Discrete(MAX_CAND_NUM + 1) for _ in range(self.n_drivers)])
+             range(self.n_drivers)])
+        self.action_space = gym.spaces.Tuple([gym.spaces.Discrete(MAX_CAND_NUM+1) for _ in range(self.n_drivers)])
 
         self.state = np.array(self.state)
 
@@ -536,7 +537,7 @@ class City(gym.Env):
         # actions: list of actions for each driver
         # e.g. [0,1,2,1,...]
         self.order_generate()
-        # print('time:', self.time, '=' * 30)
+        #print('time:', self.time, '=' * 30)
         rewards = []
         observations = []
         done = []
@@ -595,7 +596,7 @@ class City(gym.Env):
             observations.append(self.drivers[i].agent_observe(dist_func))
 
             action_i = actions[i]
-            this_reward, is_lost_order, lost_order = self.drivers[i].take_action(action_i, dist_func)
+            this_reward0, is_lost_order, lost_order = self.drivers[i].take_action(action_i, dist_func)
             if is_lost_order:
                 self.num_lost_orders += 1
             if action_i >= 1 and self.drivers[i].capacity < 1:
@@ -603,15 +604,14 @@ class City(gym.Env):
             if action_i >= 1 and self.drivers[i].capacity >= 1:
                 order_i = self.drivers[i].order_to_pick
                 if order_i.fee > EPS:
-                    self.order_buffer.remove(order_i)  # remove picked order from city buffer
+                    self.order_buffer.remove(order_i) # remove picked order from city buffer
                     self.order_pend_val += order_i.fee
                 # print('driver {0} will take order {1},{2} -> {3},{4}'.format(i, order_i.ori[0], order_i.ori[1], order_i.dest[0], order_i.dest[1]))
 
                 if is_lost_order and lost_order.fee > EPS:  # if order is given up
                     self.order_buffer.append(lost_order)  # return the order to city buffer
                     self.order_lost_val += lost_order.fee
-            rewards.append(this_reward)
-            self.total_reward += sum(rewards)
+            
 
             #################################################################
             # move one step and decide pickup/drop orders
@@ -620,18 +620,21 @@ class City(gym.Env):
             self.order_picked_val += picked_order_val
             self.order_droped_val += drop_order_val
 
+            # new reward structure
+            rewards.append(this_reward0+drop_order_val)
+
+            self.total_reward += sum(rewards)
+
             done.append(False)
         # if an other has not been picked up after ddl, delete it from buffer
         self.order_buffer = [order for order in self.order_buffer if order.pickup_ddl > self.time]
         self.time += 1
         self.state = observations
-        if self.time % 1000 == 0:
+        if self.time % 100 == 0:
             print('impossible move:', self.num_impossible_move)
             print('lost orders:', self.num_lost_orders)
-            print('total reward:', self.total_reward)
-
-        info = {'picked_fee': self.order_picked_val, 'dropped_fee': self.order_droped_val,
-                'pending_income': self.order_pend_val,
-                'lost_fee': self.order_lost_val, 'num_lost_orders': self.num_lost_orders,
-                'num_impossible_move': self.num_impossible_move}
+            print('total reward:',self.total_reward)
+            print('orders left:',len(self.order_buffer))
+        info = {'picked_fee':self.order_picked_val, 'dropped_fee':self.order_droped_val, 'pending_income':self.order_pend_val,
+                'lost_fee':self.order_lost_val, 'num_lost_orders':self.num_lost_orders, 'num_impossible_move': self.num_impossible_move}
         return np.array(observations), np.array(rewards), done[0], info

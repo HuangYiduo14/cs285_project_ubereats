@@ -1,4 +1,5 @@
 #from .base_critic import BaseCritic
+import torch
 from torch import nn
 from torch import optim
 from cs285.envs.city import MAX_CAP, MAX_CAND_NUM
@@ -28,6 +29,8 @@ class BootstrappedContinuousCritic(nn.Module):
         self.n_layers = hparams['n_layers']
         self.learning_rate = hparams['learning_rate']
         self.n_drivers = hparams['n_drivers']
+        self.shared_exp = hparams['shared_exp']
+        self.shared_exp_lambda = hparams['shared_exp_lambda']
         # critic parameters
         self.num_target_updates = hparams['num_target_updates']
         self.num_grad_steps_per_target_update = hparams['num_grad_steps_per_target_update']
@@ -55,14 +58,44 @@ class BootstrappedContinuousCritic(nn.Module):
         for i in range(self.n_drivers):
             rewards.append(self.critic_networks[i](observations[:,i,:]).squeeze(1))
         return rewards
+    
+    def shared_forward(self, obs):
+        if isinstance(obs, np.ndarray):
+            obs = ptu.from_numpy(obs)
+        observations = obs[:,:,0:self.ob_dim]
+        rewards = dict()
+        for i in range(self.n_drivers):
+            for k in range(self.n_drivers):
+                rewards[(i,k)] = self.critic_networks[i](observations[:,k,:]).squeeze(1)
+        return rewards
+        
 
     def forward_np(self, obs):
         obs = ptu.from_numpy(obs)
         predictions = self(obs)
         results = np.array([ptu.to_numpy(predictions[i]) for i in range(self.n_drivers)])
         return results.T
+    
+    def check_map(self):
+        val_fun0 = np.zeros((10,10))
+        val_fun1 = np.zeros((10,10))
+        val_fun2 = np.zeros((10,10))
+        obs = []
+        for i in range(10):
+          for j in range(10):
+            this_obs = np.array([[[1,0,i,j,i,j]]])
+            result0 = self.forward_np(this_obs)
+            result0 = result0.squeeze()
+            result1 = self.forward_np(np.array([[[1,0,0,0,i,j]]]))
+            result2 = self.forward_np(np.array([[[1,0,i,j,0,0]]]))
+            val_fun0[i,j] = result0
+            val_fun1[i,j] = result1
+            val_fun2[i,j] = result2
+        
+        return val_fun0, val_fun1, val_fun2
+        
 
-    def update(self, ob_no, ac_na, next_ob_no, reward_n, terminal_n):
+    def update(self, ob_no, ac_na, next_ob_no, reward_n, terminal_n, action_distributions=None):
         """
             Update the parameters of the critic.
 
@@ -94,24 +127,52 @@ class BootstrappedContinuousCritic(nn.Module):
         #       to 0) when a terminal state is reached
         # HINT: make sure to squeeze the output of the critic_network to ensure
         #       that its dimensions match the reward
+        if isinstance(ac_na, np.ndarray):
+            ac_na = ptu.from_numpy(ac_na)
 
-        for i in range(self.num_target_updates):
-            value_s_next = self.forward_np(next_ob_no)
-            value_s_next[terminal_n==1] = 0
-            targets_d = []
-            for d in range(self.n_drivers):
-                targets = reward_n[:, d] + self.gamma * value_s_next[:,d]
-                targets_d.append(ptu.from_numpy(targets))
-
-            for j in range(self.num_grad_steps_per_target_update):
-                value_s = self.forward(ptu.from_numpy(ob_no))
-                losses = []
+        if self.shared_exp:
+            for i in range(self.num_target_updates):
+                value_next = self.shared_forward(next_ob_no)
+                targets_d = dict()
+                for d1 in range(self.n_drivers):
+                    for d2 in range(self.n_drivers):
+                        targets_d[(d1,d2)] = ptu.from_numpy(reward_n[:,d2]+self.gamma*ptu.to_numpy(value_next[(d1,d2)]))
+                
+                for j in range(self.num_grad_steps_per_target_update):
+                    value_s = self.shared_forward(ptu.from_numpy(ob_no))
+                    losses = []
+                    for d1 in range(self.n_drivers):
+                        this_loss = torch.mean((targets_d[(d1,d1)]-value_s[(d1,d1)])**2)
+                        for d2 in range(self.n_drivers):
+                            if d1 != d2:
+                                this_loss = this_loss + self.shared_exp_lambda*torch.mean(
+                                torch.div(torch.exp(action_distributions[(d1,d2)].log_prob(ac_na[:,d2])), torch.exp(action_distributions[(d2,d2)].log_prob(ac_na[:,d2]))) *\
+                                (targets_d[(d1,d2)]-value_s[(d1,d2)])**2)
+                        
+                        losses.append(this_loss)
+                        self.optimizers[d1].zero_grad()
+                        losses[d1].backward(retain_graph=True)
+                        self.optimizers[d1].step()
+            return losses[d1].item()
+                
+        else:
+            for i in range(self.num_target_updates):
+                value_s_next = self.forward_np(next_ob_no)
+                value_s_next[terminal_n==1] = 0
+                targets_d = []
                 for d in range(self.n_drivers):
-                    losses.append(self.losses[d](targets_d[d], value_s[d]))
-                    self.optimizers[d].zero_grad()
-                    losses[d].backward()
-                    self.optimizers[d].step()
-        return losses[d].item()
+                    targets = reward_n[:, d] + self.gamma * value_s_next[:,d]
+                    targets_d.append(ptu.from_numpy(targets))
+
+                for j in range(self.num_grad_steps_per_target_update):
+                    value_s = self.forward(ptu.from_numpy(ob_no))
+                    losses = []
+                    for d in range(self.n_drivers):
+                        losses.append(self.losses[d](targets_d[d], value_s[d]))
+                        self.optimizers[d].zero_grad()
+                        losses[d].backward()
+                        self.optimizers[d].step()
+            return losses[d].item()
 
 """
 import numpy as np

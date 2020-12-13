@@ -24,7 +24,9 @@ class ACAgent(BaseAgent):
             self.agent_params['ac_dim'],
             self.agent_params['ob_dim'],
             self.agent_params['n_layers'],
-            self.agent_params['size'],
+            self.agent_params['size_ac'],
+            self.agent_params['shared_exp'],
+            self.agent_params['shared_exp_lambda'],
             self.agent_params['is_city'],
             self.agent_params['learning_rate'],
             self.agent_params['n_drivers']
@@ -40,15 +42,34 @@ class ACAgent(BaseAgent):
         #     update the critic
         loss = OrderedDict()
         for i in range(self.agent_params['num_critic_updates_per_agent_update']):
-            loss['Critic_Loss'] = self.critic.update(ob_no, ac_na, next_ob_no, re_n, terminal_n)
+            if not self.agent_params['shared_exp']:
+                loss['Critic_Loss'] = self.critic.update(ob_no, ac_na, next_ob_no, re_n, terminal_n)
+            else:
+                action_distributions = self.actor.shared_forward(ptu.from_numpy(ob_no))
+                loss['Critic_Loss'] = self.critic.update(ob_no, ac_na, next_ob_no, re_n, terminal_n, action_distributions)
         # advantage = estimate_advantage(...)
-        advantage = self.estimate_advantage(ob_no,next_ob_no, re_n, terminal_n)
-
+        if self.agent_params['shared_exp']:
+            advantage = self.estimate_shared_advantage(ob_no, next_ob_no, re_n, terminal_n)
+        else:
+            advantage = self.estimate_advantage(ob_no, next_ob_no, re_n, terminal_n)
         # for agent_params['num_actor_updates_per_agent_update'] steps,
         #     update the actor
         for i in range(self.agent_params['num_actor_updates_per_agent_update']):
             loss['Actor_Loss'] = self.actor.update(ob_no, ac_na, advantage)
         return loss
+        
+        
+    def estimate_shared_advantage(self, ob_no, next_ob_no, re_n, terminal_n):
+        value_s = self.critic.shared_forward(ptu.from_numpy(ob_no))
+        value_next_s = self.critic.shared_forward(ptu.from_numpy(next_ob_no))
+        adv_n = dict()
+        for i in range(self.n_drivers):
+            for k in range(self.n_drivers):
+                adv_n[(i,k)] = re_n[:,k] + self.gamma*ptu.to_numpy(value_next_s[(i,k)]) - ptu.to_numpy(value_s[(i,k)])
+                if self.standardize_advantages:
+                    adv_n[(i,k)] = (adv_n[(i,k)]- np.mean(adv_n[(i,k)]))/(np.std(adv_n[(i,k)])+1e-8)
+        return adv_n
+        
 
     def estimate_advantage(self, ob_no, next_ob_no, re_n, terminal_n):
         # TODO Implement the following pseudocode:
