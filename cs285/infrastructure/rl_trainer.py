@@ -78,21 +78,21 @@ class RL_Trainer(object):
 
         # Is this env multi binary, or self.discrete?
         #multi_bi = isinstance(self.env.action_space, gym.spaces.MultiBinary)
-        multi_bi = True
+        is_city = True
         # Are the observations images?
         img = False
 
-        self.params['agent_params']['multi_bi'] = multi_bi
+        self.params['agent_params']['is_city'] = is_city
 
         # Observation and action sizes
 
         #ob_dim = self.env.observation_space.shape if img else self.env.observation_space.shape[0]
         #ac_dim = self.env.action_space.n if multi_bi else self.env.action_space.shape[0]
-        ob_dim = 1+2+ 2*MAX_CAP
-        ac_dim = 5
+        #ob_dim = self.env.observation_space.shape[0]
+        #ac_dim = self.env.action_space.shape[0]
 
-        self.params['agent_params']['ac_dim'] = ac_dim
-        self.params['agent_params']['ob_dim'] = ob_dim
+        self.params['agent_params']['ac_dim'] = self.params['n_drivers']
+        self.params['agent_params']['ob_dim'] = (self.params['n_drivers'],(3+2*MAX_CAP+5+5*MAX_CAND_NUM))
 
         # simulation timestep, will be used for video saving
         #if 'model' in dir(self.env):

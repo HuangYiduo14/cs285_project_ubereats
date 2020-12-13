@@ -18,15 +18,18 @@ class ACAgent(BaseAgent):
 
         self.gamma = self.agent_params['gamma']
         self.standardize_advantages = self.agent_params['standardize_advantages']
+        self.n_drivers = self.agent_params['n_drivers']
 
         self.actor = MLPPolicyAC(
             self.agent_params['ac_dim'],
             self.agent_params['ob_dim'],
             self.agent_params['n_layers'],
             self.agent_params['size'],
-            self.agent_params['multi_bi'],
+            self.agent_params['is_city'],
             self.agent_params['learning_rate'],
+            self.agent_params['n_drivers']
         )
+
         self.critic = BootstrappedContinuousCritic(self.agent_params)
 
         self.replay_buffer = ReplayBuffer()
@@ -59,7 +62,8 @@ class ACAgent(BaseAgent):
         value_next_s[terminal_n==1] = 0
         adv_n = re_n + self.gamma*value_next_s - value_s
         if self.standardize_advantages:
-            adv_n = (adv_n - np.mean(adv_n)) / (np.std(adv_n) + 1e-8)
+            for i in range(self.n_drivers):
+                adv_n[:,i] = (adv_n[:,i] - np.mean(adv_n[:,i])) / (np.std(adv_n[:,i]) + 1e-8)
         return adv_n
 
     def add_to_replay_buffer(self, paths):

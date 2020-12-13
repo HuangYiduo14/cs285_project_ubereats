@@ -410,7 +410,7 @@ class City(gym.Env):
             self.drivers.append(Driver(home_x, home_y, driver_id=i, driver_features=driver_features,
                                        max_capacity=self.capacity_profile[type]))
             self.driver_map[home_x, home_y] += 1
-            self.state += self.drivers[i].agent_observe(dist_func)
+            self.state.append(self.drivers[i].agent_observe(dist_func))
 
         self.restaurants = [
             Restaurant(round(np.random.rand() * self.width /2 + self.width/2), round(np.random.rand() * self.height),
@@ -434,16 +434,14 @@ class City(gym.Env):
         # initialize action space
 
 
-        obs_lb_one_driver = [0, 0, 0, 0] + [0 for _ in range(2 * MAX_CAP)] + \
+        obs_lb_one_driver = [0, 0, 0] + [0 for _ in range(2 * MAX_CAP)] + \
                             [0, 0, 0, 0, 0] + [0, 0, 0, 0, 0]*MAX_CAND_NUM
-        obs_ub_one_driver = [10, 10, 1, MAX_CAP] + [10 for _ in range(2 * MAX_CAP)] + \
+        obs_ub_one_driver = [10, 10, 1] + [10 for _ in range(2 * MAX_CAP)] + \
                             [10, 10, 10, 10, BIG_NUM] + [10, 10, 10, 10, BIG_NUM]*MAX_CAND_NUM
         self.observation_space = gym.spaces.Tuple([
             gym.spaces.Box(low=np.array(obs_lb_one_driver), high=np.array(obs_ub_one_driver)) for _ in
              range(self.n_drivers)])
-
-        self.action_space = gym.spaces.Tuple([gym.spaces.Box() for _ in range(self.n_drivers)])
-
+        self.action_space = gym.spaces.Tuple([gym.spaces.Discrete(MAX_CAND_NUM+1) for _ in range(self.n_drivers)])
 
         self.state = np.array(self.state)
 

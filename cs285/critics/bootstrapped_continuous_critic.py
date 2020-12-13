@@ -1,11 +1,11 @@
-from .base_critic import BaseCritic
+#from .base_critic import BaseCritic
 from torch import nn
 from torch import optim
-
+from cs285.envs.city import MAX_CAP, MAX_CAND_NUM
 from cs285.infrastructure import pytorch_util as ptu
+import numpy as np
 
-
-class BootstrappedContinuousCritic(nn.Module, BaseCritic):
+class BootstrappedContinuousCritic(nn.Module):
     """
         Notes on notation:
 
@@ -21,37 +21,46 @@ class BootstrappedContinuousCritic(nn.Module, BaseCritic):
     """
     def __init__(self, hparams):
         super().__init__()
-        self.ob_dim = hparams['ob_dim']
-        self.ac_dim = hparams['ac_dim']
-        self.multi_bi = hparams['multi_bi']
+        self.ob_dim = 3+2*MAX_CAP
+        self.ac_dim = 5
+        self.is_city = hparams['is_city']
         self.size = hparams['size']
         self.n_layers = hparams['n_layers']
         self.learning_rate = hparams['learning_rate']
-
+        self.n_drivers = hparams['n_drivers']
         # critic parameters
         self.num_target_updates = hparams['num_target_updates']
         self.num_grad_steps_per_target_update = hparams['num_grad_steps_per_target_update']
         self.gamma = hparams['gamma']
-        self.critic_network = ptu.build_mlp(
+        self.critic_networks = []
+        self.losses = []
+        self.optimizers = []
+        for i in range(self.n_drivers):
+            self.critic_networks.append(ptu.build_mlp(
             self.ob_dim,
             1,
             n_layers=self.n_layers,
             size=self.size,
-        )
-        self.critic_network.to(ptu.device)
-        self.loss = nn.MSELoss()
-        self.optimizer = optim.Adam(
-            self.critic_network.parameters(),
-            self.learning_rate,
-        )
+            ))
+            self.critic_networks[i].to(ptu.device)
+            self.losses.append(nn.MSELoss())
+            self.optimizers.append(optim.Adam(
+                self.critic_networks[i].parameters(),
+                self.learning_rate,
+            ))
 
     def forward(self, obs):
-        return self.critic_network(obs).squeeze(1)
+        observations = obs[:,:,0:self.ob_dim]
+        rewards = []
+        for i in range(self.n_drivers):
+            rewards.append(self.critic_networks[i](observations[:,i,:]).squeeze(1))
+        return rewards
 
     def forward_np(self, obs):
         obs = ptu.from_numpy(obs)
         predictions = self(obs)
-        return ptu.to_numpy(predictions)
+        results = np.array([ptu.to_numpy(predictions[i]) for i in range(self.n_drivers)])
+        return results.T
 
     def update(self, ob_no, ac_na, next_ob_no, reward_n, terminal_n):
         """
@@ -85,15 +94,46 @@ class BootstrappedContinuousCritic(nn.Module, BaseCritic):
         #       to 0) when a terminal state is reached
         # HINT: make sure to squeeze the output of the critic_network to ensure
         #       that its dimensions match the reward
+
         for i in range(self.num_target_updates):
             value_s_next = self.forward_np(next_ob_no)
             value_s_next[terminal_n==1] = 0
-            targets = reward_n + self.gamma * value_s_next
-            targets = ptu.from_numpy(targets)
+            targets_d = []
+            for d in range(self.n_drivers):
+                targets = reward_n[:, d] + self.gamma * value_s_next[:,d]
+                targets_d.append(ptu.from_numpy(targets))
+
             for j in range(self.num_grad_steps_per_target_update):
                 value_s = self.forward(ptu.from_numpy(ob_no))
-                loss = self.loss(targets, value_s)
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-        return loss.item()
+                losses = []
+                for d in range(self.n_drivers):
+                    losses.append(self.losses[d](targets_d[d], value_s[d]))
+                    self.optimizers[d].zero_grad()
+                    losses[d].backward()
+                    self.optimizers[d].step()
+        return losses[d].item()
+
+"""
+import numpy as np
+ob_dim = 3+2*MAX_CAP
+ac_dim = 5
+n_drivers = 3
+hparams= dict()
+hparams['ob_dim'] = ob_dim
+hparams['ac_dim'] = ac_dim
+hparams['is_city'] = True
+hparams['size'] = 20
+hparams['n_layers'] = 2
+hparams['learning_rate'] = 1e-3
+hparams['n_drivers']=n_drivers
+# critic parameters
+hparams['num_target_updates'] = 10
+hparams['num_grad_steps_per_target_update'] = 10
+hparams['gamma'] = 0.9
+aa =  BootstrappedContinuousCritic(hparams)
+obs_lb_one_driver = [0, 0, 0] + [0 for _ in range(2 * MAX_CAP)] + \
+                            [0, 0, 0, 0, 0] + [0, 0, 0, 0, 0]*MAX_CAND_NUM
+obs = np.array([[obs_lb_one_driver for _ in range(n_drivers)] for _ in range(2)])
+cc = aa.forward_np(obs)
+aa.update(obs,0,obs,cc,np.array([False, False]))
+"""
