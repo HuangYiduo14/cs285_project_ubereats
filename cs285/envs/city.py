@@ -164,17 +164,16 @@ class Driver:
     def agent_observe(self, dist_func):
         """
         :return: observation for this agent
-        observation = [current_x, current_y,                         #x_i^t
-        speed, available seats,                                      #v^i
-        trajectory_x0, trajectory_y0,
-        trajectory_x1, trajectory_y1,
-        ...
-        trajectory_xm, trajectory_ym,                               # kappa_t^i
-        order_to_pick: ori_x, ori_y, dest_x, dest_y, fee
-        order_candidate 1: ori_x, ori_y, dest_x, dest_y, fee
-        ...
-        order_candidate MAX_CAND_ORDER: ori_x, ori_y, dest_x, dest_y, fee
-        ]
+            [available seats, current_x, current_y,
+                 trajectory_x0, trajectory_y0,
+                 trajectory_x1, trajectory_y1,
+                 ...
+                 trajectory_xm, trajectory_ym,
+                order_to_pick: ori_x, ori_y, dest_x, dest_y, fee
+                order_candidate_1: ori_x, ori_y, dest_x, dest_y, fee
+                order_candidate_2: ori_x, ori_y, dest_x, dest_y, fee
+                order_candidate_MAX_CAND_NUM: ori_x, ori_y, dest_x, dest_y, fee
+            ]
         m = MAX_CAP
         """
         if self.next_is_drop:
@@ -218,11 +217,10 @@ class Driver:
                     self.order_candidates[i].dest[0], self.order_candidates[i].dest[1],
                     self.order_candidates[i].fee
                 ]
-        else:
-            order_candidates_info += [self.x, self.y, self.x, self.y, 0]
+            else:
+                order_candidates_info += [self.x, self.y, self.x, self.y, 0]
 
-        return [self.x, self.y,
-                self.driver_features['speed'], self.capacity] \
+        return [self.capacity, self.x, self.y] \
                + order_space_time_traj + order_to_pick_info + order_candidates_info
 
     def take_action(self, action, dist_func):
@@ -434,21 +432,24 @@ class City(gym.Env):
         self.all_orders = []
 
         # initialize action space
-        self.action_space = gym.spaces.Tuple(tuple([gym.spaces.Discrete(1+MAX_CAND_NUM) for _ in range(self.n_drivers)]))
+
+
         obs_lb_one_driver = [0, 0, 0, 0] + [0 for _ in range(2 * MAX_CAP)] + \
-                            [0, 0, 0, 0, 0] + [0, 0, 0, 0, 0]
+                            [0, 0, 0, 0, 0] + [0, 0, 0, 0, 0]*MAX_CAND_NUM
         obs_ub_one_driver = [10, 10, 1, MAX_CAP] + [10 for _ in range(2 * MAX_CAP)] + \
-                            [10, 10, 10, 10, BIG_NUM] + [10, 10, 10, 10, BIG_NUM]
-        self.observation_space = gym.spaces.Tuple(tuple([
+                            [10, 10, 10, 10, BIG_NUM] + [10, 10, 10, 10, BIG_NUM]*MAX_CAND_NUM
+        self.observation_space = gym.spaces.Tuple([
             gym.spaces.Box(low=np.array(obs_lb_one_driver), high=np.array(obs_ub_one_driver)) for _ in
-             range(self.n_drivers)]))
+             range(self.n_drivers)])
+
+        self.action_space = gym.spaces.Tuple([gym.spaces.Box() for _ in range(self.n_drivers)])
+
 
         self.state = np.array(self.state)
 
         """
         observation space for one driver:
-            [current_x, current_y,  # x_i^t
-                 speed, available seats,  # v^i
+            [available seats, current_x, current_y,
                  trajectory_x0, trajectory_y0,
                  trajectory_x1, trajectory_y1,
                  ...

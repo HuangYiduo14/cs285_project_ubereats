@@ -18,7 +18,7 @@ from cs285.infrastructure.dqn_utils import (
         get_wrapper_by_name,
         register_custom_envs,
 )
-from cs285.envs.city import City
+from cs285.envs.city import City, MAX_CAND_NUM, MAX_CAP
 # how many rollouts to save as videos to tensorboard
 MAX_NVIDEO = 2
 MAX_VIDEO_LEN = 40 # we overwrite this in the code below
@@ -77,8 +77,8 @@ class RL_Trainer(object):
         MAX_VIDEO_LEN = self.params['ep_len']
 
         # Is this env multi binary, or self.discrete?
-        multi_bi = isinstance(self.env.action_space, gym.spaces.MultiBinary)
-
+        #multi_bi = isinstance(self.env.action_space, gym.spaces.MultiBinary)
+        multi_bi = True
         # Are the observations images?
         img = False
 
@@ -86,8 +86,11 @@ class RL_Trainer(object):
 
         # Observation and action sizes
 
-        ob_dim = self.env.observation_space.shape if img else self.env.observation_space.shape[0]
-        ac_dim = self.env.action_space.n if multi_bi else self.env.action_space.shape[0]
+        #ob_dim = self.env.observation_space.shape if img else self.env.observation_space.shape[0]
+        #ac_dim = self.env.action_space.n if multi_bi else self.env.action_space.shape[0]
+        ob_dim = 1+2+ 2*MAX_CAP
+        ac_dim = 5
+
         self.params['agent_params']['ac_dim'] = ac_dim
         self.params['agent_params']['ob_dim'] = ob_dim
 
