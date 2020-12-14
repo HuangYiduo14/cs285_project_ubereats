@@ -83,11 +83,11 @@ class BootstrappedContinuousCritic(nn.Module):
         obs = []
         for i in range(10):
           for j in range(10):
-            this_obs = np.array([[[1,0,i,j,i,j]]])
+            this_obs = np.array([[[1,i,j,i,j]]])
             result0 = self.forward_np(this_obs)
             result0 = result0.squeeze()
-            result1 = self.forward_np(np.array([[[1,0,0,0,i,j]]]))
-            result2 = self.forward_np(np.array([[[1,0,i,j,0,0]]]))
+            result1 = self.forward_np(np.array([[[1,0,0,i,j]]]))
+            result2 = self.forward_np(np.array([[[1,i,j,0,0]]]))
             val_fun0[i,j] = result0
             val_fun1[i,j] = result1
             val_fun2[i,j] = result2
@@ -142,14 +142,15 @@ class BootstrappedContinuousCritic(nn.Module):
                     value_s = self.shared_forward(ptu.from_numpy(ob_no))
                     losses = []
                     for d1 in range(self.n_drivers):
-                        this_loss = torch.mean((targets_d[(d1,d1)]-value_s[(d1,d1)])**2)
+                        this_loss = (targets_d[(d1,d1)]-value_s[(d1,d1)])**2
                         for d2 in range(self.n_drivers):
                             if d1 != d2:
-                                this_loss = this_loss + self.shared_exp_lambda*torch.mean(
-                                torch.div(torch.exp(action_distributions[(d1,d2)].log_prob(ac_na[:,d2])), torch.exp(action_distributions[(d2,d2)].log_prob(ac_na[:,d2]))) *\
-                                (targets_d[(d1,d2)]-value_s[(d1,d2)])**2)
+                                this_loss = this_loss + self.shared_exp_lambda * \
+                                torch.div(torch.exp(action_distributions[(d1,d2)].log_prob(ac_na[:,d2]).detach()), 
+                                torch.exp(action_distributions[(d2,d2)].log_prob(ac_na[:,d2]).detach())) *\
+                                (targets_d[(d1,d2)]-value_s[(d1,d2)])**2
                         
-                        losses.append(this_loss)
+                        losses.append(this_loss.mean())
                         self.optimizers[d1].zero_grad()
                         losses[d1].backward(retain_graph=True)
                         self.optimizers[d1].step()

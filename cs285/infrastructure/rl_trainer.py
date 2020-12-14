@@ -186,19 +186,19 @@ class RL_Trainer(object):
             # log/save
             if self.logvideo or self.logmetrics:
                 # perform logging
-                map0,map1,map2 = self.agent.critic.check_map()
-                plt.figure()
-                plt.imshow(map0, cmap='hot')
-                plt.show()
-                plt.savefig('/content/cs285_f2020/homework_fall2020/hw3/data_city2/heatmap0.png')
-                plt.imshow(map1, cmap='hot')
-                plt.figure()
-                plt.show()
-                plt.savefig('/content/cs285_f2020/homework_fall2020/hw3/data_city2/heatmap1.png')
-                plt.figure()
-                plt.imshow(map2, cmap='hot')
-                plt.show()
-                plt.savefig('/content/cs285_f2020/homework_fall2020/hw3/data_city2/heatmap2.png')
+                #map0,map1,map2 = self.agent.critic.check_map()
+                #plt.figure()
+                #plt.imshow(map0, cmap='hot')
+                #plt.show()
+                #plt.savefig('/content/cs285_f2020/homework_fall2020/hw3/data_city2/heatmap0.png')
+                #plt.imshow(map1, cmap='hot')
+                #plt.figure()
+                #plt.show()
+                #plt.savefig('/content/cs285_f2020/homework_fall2020/hw3/data_city2/heatmap1.png')
+                #plt.figure()
+                #plt.imshow(map2, cmap='hot')
+                #plt.show()
+                #plt.savefig('/content/cs285_f2020/homework_fall2020/hw3/data_city2/heatmap2.png')
                 
                 
                 print('\nBeginning logging procedure...')
