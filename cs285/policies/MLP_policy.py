@@ -166,6 +166,7 @@ class MLPPolicyAC(MLPPolicy):
         else:
             action_distributions = self(observations)
         losses = []
+        actions = actions.type(torch.int64)
         for i in range(self.n_drivers):
             if not self.shared_exp:
                 losses.append((-action_distributions[i].log_prob(actions[:,i]) * adv_n[:,i]).mean())
@@ -174,7 +175,8 @@ class MLPPolicyAC(MLPPolicy):
                 for k in range(self.n_drivers):
                     if k != i:
                         losses_i = losses_i -self.shared_exp_lambda * \
-                        torch.div(torch.exp(action_distributions[(i,k)].log_prob(actions[:,k])), torch.exp(action_distributions[(k,k)].log_prob(actions[:,k])).detach()) * \
+                        torch.div(action_distributions[(i,k)].probs.gather(1,actions[:,k][None].transpose(1,0)).squeeze(), 
+                        action_distributions[(k,k)].probs.gather(1,actions[:,k][None].transpose(1,0)).squeeze().detach()) * \
                         action_distributions[(i,k)].log_prob(actions[:,k]) * ptu.from_numpy(adv_n[(i,k)])
                 losses.append(losses_i.mean())
                 

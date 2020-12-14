@@ -87,7 +87,9 @@ class BootstrappedContinuousCritic(nn.Module):
             result0 = self.forward_np(this_obs)
             result0 = result0.squeeze()
             result1 = self.forward_np(np.array([[[1,0,0,i,j]]]))
+            result1 = result1.squeeze()
             result2 = self.forward_np(np.array([[[1,i,j,0,0]]]))
+            result2 = result2.squeeze()
             val_fun0[i,j] = result0
             val_fun1[i,j] = result1
             val_fun2[i,j] = result2
@@ -129,7 +131,8 @@ class BootstrappedContinuousCritic(nn.Module):
         #       that its dimensions match the reward
         if isinstance(ac_na, np.ndarray):
             ac_na = ptu.from_numpy(ac_na)
-
+        
+        ac_na = ac_na.type(torch.int64)
         if self.shared_exp:
             for i in range(self.num_target_updates):
                 value_next = self.shared_forward(next_ob_no)
@@ -146,8 +149,8 @@ class BootstrappedContinuousCritic(nn.Module):
                         for d2 in range(self.n_drivers):
                             if d1 != d2:
                                 this_loss = this_loss + self.shared_exp_lambda * \
-                                torch.div(torch.exp(action_distributions[(d1,d2)].log_prob(ac_na[:,d2]).detach()), 
-                                torch.exp(action_distributions[(d2,d2)].log_prob(ac_na[:,d2]).detach())) *\
+                                torch.div(action_distributions[(d1,d2)].probs.gather(1,ac_na[:,d2][None].transpose(1,0)).squeeze().detach(), 
+                        action_distributions[(d2,d2)].probs.gather(1,ac_na[:,d2][None].transpose(1,0)).squeeze().detach()) *\
                                 (targets_d[(d1,d2)]-value_s[(d1,d2)])**2
                         
                         losses.append(this_loss.mean())

@@ -11,11 +11,11 @@ import random
 
 BIG_NUM = 99999999
 EPS = 1e-12
-SEARCH_RADIUS = 3
-DROP_PICK_RADIUS = EPS*10
-MAX_ORDER_BUFFER = 150
-MAX_CAND_NUM = 10
-MAX_CAP = 1
+SEARCH_RADIUS = 3 # serach radius
+DROP_PICK_RADIUS = EPS*10 # when a driver can pick/drop
+MAX_ORDER_BUFFER = 300 # how many orders do we keep in buffer
+MAX_CAND_NUM = 10 # number of candidate orders in the candidate set
+MAX_CAP = 1 # max capacity of cars
 
 
 class Restaurant:
@@ -417,11 +417,11 @@ class City(gym.Env):
 
         self.restaurants = [
             Restaurant(round(np.random.rand() * self.width /5 + self.width/2), round(np.random.rand() * self.height/5+self.height/2),
-                       0.1 * (np.random.rand() / 2. + 0.5)) for _ in range(n_restaurants-4)]
-        self.restaurants.append(Restaurant(0,0,0.1 * (np.random.rand() / 2. + 0.5)))
-        self.restaurants.append(Restaurant(0,9,0.1 * (np.random.rand() / 2. + 0.5)))
-        self.restaurants.append(Restaurant(9,0,0.1 * (np.random.rand() / 2. + 0.5)))
-        self.restaurants.append(Restaurant(9,9,0.1 * (np.random.rand() / 2. + 0.5)))
+                       0.2* (np.random.rand() / 2. + 0.5)) for _ in range(n_restaurants-4)]
+        self.restaurants.append(Restaurant(0,0,0.2 * (np.random.rand() / 2. + 0.5)))
+        self.restaurants.append(Restaurant(0,9,0.2 * (np.random.rand() / 2. + 0.5)))
+        self.restaurants.append(Restaurant(9,0,0.2 * (np.random.rand() / 2. + 0.5)))
+        self.restaurants.append(Restaurant(9,9,0.2 * (np.random.rand() / 2. + 0.5)))
         for restaurant in self.restaurants:
             print('restaurant', restaurant.x, restaurant.y, restaurant.attractiveness)
             self.demand_expectation[restaurant.x, restaurant.y] += restaurant.attractiveness
@@ -546,7 +546,9 @@ class City(gym.Env):
         order_candidate_selected = []
         restaurant_loc_list = [(r.x, r.y) for r in self.restaurants]
         restaurant_attractive_list = [r.attractiveness for r in self.restaurants]
-        for i in range(self.n_drivers):
+        driver_seq = list(range(self.n_drivers))
+        shuffle(driver_seq)
+        for i in driver_seq:
             def dist_func(x, y):
                 return self.travel_time(x, y, self.drivers[i].driver_features)
 
@@ -623,7 +625,7 @@ class City(gym.Env):
             # new reward structure
             rewards.append(this_reward0+drop_order_val)
 
-            self.total_reward += sum(rewards)
+            self.total_reward += this_reward0 + drop_order_val
 
             done.append(False)
         # if an other has not been picked up after ddl, delete it from buffer
